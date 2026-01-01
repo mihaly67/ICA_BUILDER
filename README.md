@@ -1,1 +1,1 @@
-# Conky-   Mx linux rendszerre conky témák és widgetek
+# Conky-   Mx linux, linuxmint rendszerre conky témák és widgetek
