@@ -34,8 +34,7 @@ async def run_mcp_client(tool_name, args_dict):
             
     elif os.environ.get("VPS_SSH_KEY"):
         with open("temp_mcp_key", "w") as f:
-            f.write(os.environ.get("VPS_SSH_KEY") + "
-")
+            f.write(os.environ.get("VPS_SSH_KEY") + "\n")
         os.chmod("temp_mcp_key", 0o600)
         server_params.args = ["-i", "temp_mcp_key"] + server_params.args
 
@@ -54,8 +53,7 @@ async def run_mcp_client(tool_name, args_dict):
                     for content in result.content:
                         if content.type == "text":
                             outputs.append(content.text)
-                return "
-".join(outputs)
+                return "\n".join(outputs)
     finally:
         if os.path.exists("temp_mcp_key"):
             os.remove("temp_mcp_key")
