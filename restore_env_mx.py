@@ -161,6 +161,7 @@ def main():
     print(f"{Fore.CYAN}🧠 Memória [SESSION_START] inicializálása a háttérben...{Style.RESET_ALL}")
     memory_manager_path = os.path.join(script_dir, "ENVIRONMENT_SETUP", "agent_memory_manager.py")
     if os.path.exists(memory_manager_path):
+        subprocess.run([sys.executable, memory_manager_path, "--action", "start_session"])
         # Csak szinkronizáljuk a memóriát, de nem írjuk be a felesleges SESSION_START markert minden futtatáskor,
         # mert az teliszemeteli a memóriát.
         subprocess.run([sys.executable, memory_manager_path, "--action", "sync"])
