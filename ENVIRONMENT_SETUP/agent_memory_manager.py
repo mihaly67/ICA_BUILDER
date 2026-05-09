@@ -136,13 +136,3 @@ if __name__ == '__main__':
     elif args.action == 'read':
         entries, exec_time = read_memory(limit=args.limit, category_filter=args.category if args.category != 'General' else None)
         print(format_memory_for_agent(entries, exec_time))
-
-        # Add a strict protocol reminder for the agent after reading memory
-        print("\n" + "="*70)
-        print("🚨 AGENT PROTOCOL ENFORCEMENT: CONTEXT WINDOW EXTENSION 🚨")
-        print("="*70)
-        print("MINDEN 5. FORDULÓBAN (TURN) VAGY LOGIKAI SZAKASZ VÉGÉN KÖTELEZŐ ÍRNOD Ebbe a fájlba!")
-        print("Parancs: python3 ENVIRONMENT_SETUP/agent_memory_manager.py --action write --category 'Context_Summary' --content '...'")
-        print("Cél: A session hosszának drasztikus megnövelése a kontextus sűrítésével (Condense).")
-        print("A Session végén futtasd: python3 ENVIRONMENT_SETUP/agent_memory_manager.py --action end_session")
-        print("="*70)
