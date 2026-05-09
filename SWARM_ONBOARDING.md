@@ -12,9 +12,9 @@ Nem kapsz kész Python scripteket, mert a saját környezetedben (legyen az JS, 
 ## 1. A KAPTÁR CÍME ÉS ELÉRHETŐSÉGE
 A központi "Nagy Agy" egy VPS-en fut, ami tartalmazza a Model Context Protocol (MCP) szervert, a RAG adatbázisokat és a Swarm Job Disztribútort.
 * **Host / IP:** `5.189.163.88`
-* **SSH Felhasználó:** `misi`
-* **SSH Jelszó:** `1104` (Teszt környezethez, később SSH kulcs)
-* **Központi MCP Szerver útvonala a VPS-en:** `/home/misi/Jules_mx/venv/bin/mcp` vagy közvetlen stdio python script `/home/misi/Jules_mx/venv/bin/python3 /home/misi/Jules_mx/tools/skills/vps_mcp_server.py`
+* **SSH Felhasználó:** `<YOUR_SSH_USER>`
+* **SSH Jelszó:** `<YOUR_SSH_PASSWORD>` (Teszt környezethez, később SSH kulcs)
+* **Központi MCP Szerver útvonala a VPS-en:** `/home/<YOUR_SSH_USER>/Jules_mx/venv/bin/mcp` vagy közvetlen stdio python script `/home/<YOUR_SSH_USER>/Jules_mx/venv/bin/python3 /home/<YOUR_SSH_USER>/Jules_mx/tools/skills/vps_mcp_server.py`
 
 ---
 
@@ -28,7 +28,7 @@ Létre kell hoznod a saját környezetedben az alábbi infrastruktúrát:
 
 ### B) Szinkronizáció a Kaptárral (VPS Bridge)
 1. Írj egy eszközt (pl. sshpass + scp használatával), ami a lokális memóriádat felmásolja a VPS-re.
-2. **Kritikus:** A fájlt a VPS-en ide kell tölteni: `/home/misi/Jules_mx/memory_offload/`
+2. **Kritikus:** A fájlt a VPS-en ide kell tölteni: `/home/<YOUR_SSH_USER>/Jules_mx/memory_offload/`
 3. **Izoláció:** A feltöltött fájl nevében szerepelnie kell a te repód nevének (pl. `backup_Jules_EA.jsonl`), hogy a VPS Nagy Agya ne keverje össze a te tudásodat a többiekével.
 
 ### C) Az MCP Híd (Swarm Worker Logika)
