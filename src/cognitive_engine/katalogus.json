@@ -1,0 +1,8 @@
+{
+    "WebVideo2NAS": "Komplett Chrome kiterjesztés HLS/M3U8 videók sniffelésére és letöltésére a háttérben. Ezt használd, ha Manifest V3 letöltőt építesz.",
+    "letta-main": "Állapottartó memóriakezelő framework. Akkor használd, ha egy Agentnek hosszú távú memóriára és kontextus-megőrzésre (regiszterekre) van szüksége iteratív munkához.",
+    "bloop-main": "Kód-kereső és AST-navigáló eszköz. Akkor vedd elő, ha egy hatalmas repóban kell gyorsan megértened az osztályok hierarchiáját (Repo Map).",
+    "OmniParser": "Képernyőfotó alapú UI értelmező. Akkor kell, ha egy weblapon vakon kell kattintani és gombokat felismerni.",
+    "cognee-main": "GraphRAG implementáció entitások és kapcsolatok (Tudáshálók) építéséhez.",
+    "browser-use": "DOM tisztító (Simplifier) eszköz Playwright botok vakságának leküzdésére."
+}
