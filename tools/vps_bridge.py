@@ -13,7 +13,7 @@ def run_on_vps(cmd):
     ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", f"{VPS_USER}@{VPS_HOST}", cmd]
 
     if VPS_PWD:
-        ssh_cmd = ["sshpass", "-p", VPS_PWD] + ssh_cmd
+        ssh_cmd = ["sshpass", "-e"] + ssh_cmd
 
     try:
         result = subprocess.run(ssh_cmd, check=True, capture_output=True, text=True)
@@ -28,7 +28,7 @@ def upload_to_vps(local_file, remote_target):
     scp_cmd = ["scp", "-o", "StrictHostKeyChecking=no", local_file, f"{VPS_USER}@{VPS_HOST}:{remote_target}"]
 
     if VPS_PWD:
-        scp_cmd = ["sshpass", "-p", VPS_PWD] + scp_cmd
+        scp_cmd = ["sshpass", "-e"] + scp_cmd
 
     try:
         subprocess.run(scp_cmd, check=True, capture_output=True, text=True)
