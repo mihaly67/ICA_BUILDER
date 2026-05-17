@@ -1,8 +1,16 @@
 {
     "WebVideo2NAS": "Komplett Chrome kiterjesztés HLS/M3U8 videók sniffelésére és letöltésére a háttérben. Ezt használd, ha Manifest V3 letöltőt építesz.",
-    "letta-main": "Állapottartó memóriakezelő framework. Akkor használd, ha egy Agentnek hosszú távú memóriára és kontextus-megőrzésre (regiszterekre) van szüksége iteratív munkához.",
-    "bloop-main": "Kód-kereső és AST-navigáló eszköz. Akkor vedd elő, ha egy hatalmas repóban kell gyorsan megértened az osztályok hierarchiáját (Repo Map).",
-    "OmniParser": "Képernyőfotó alapú UI értelmező. Akkor kell, ha egy weblapon vakon kell kattintani és gombokat felismerni.",
-    "cognee-main": "GraphRAG implementáció entitások és kapcsolatok (Tudáshálók) építéséhez.",
-    "browser-use": "DOM tisztító (Simplifier) eszköz Playwright botok vakságának leküzdésére."
+    "OmniParser": "Képernyőelemző Vision rendszer. Vizuális felületek (GUI) értelmezése, gombok bounding-boxainak kinyerése.",
+    "letta-main": "A MemGPT (most Letta) keretrendszer. Hosszú távú memória (Core Memory, Archival Memory) és OS-szerű Agent futtatás.",
+    "cognee-main": "Graph-alapú memóriakezelés és kognitív hálózatépítés LLM-eknek. Tudásgráfok (Knowledge Graph) integrálása.",
+    "bloop-main": "Szemantikus kódkereső engine. Rust alapú gyors kód indexelés.",
+    "anti-sycophancy-framework": "Keretrendszer az LLM-ek 'sycophancy' (megfelelési kényszer és hízelgés) viselkedésének csökkentésére. Módszertanok a tényszerű, objektív és az emberi véleménynek akár ellentmondó, de igaz válaszok kikényszerítésére.",
+    "sycophancy-eval": "Adathalmazok a 'Towards Understanding Sycophancy in Language Models' című cikkből az LLM szolgalelkűség kiértékelésére.",
+    "LLM-sycophancy": "Az 'Uncovering the Internal Origins of Sycophancy in Large Language Models' (AAAI'26) hivatalos kódja, amely a sycophancy belső eredetét kutatja.",
+    "awesome-llm-self-reflection": "Gyűjtemény (Awesome-list) az LLM-ek self-reflection és self-correction módszereiről.",
+    "mcp-structured-thinking": "TypeScript Model Context Protocol (MCP) szerver, amely lehetővé teszi az LLM-ek számára gondolattérképek programozott építését, kikényszerített 'metakognitív' önreflexióval.",
+    "kairos-runtime": "Egy ügynök runtime, amely az operációs rendszer primitívjeként kezeli a kontextust, a végrehajtást és a jogosultságokat, ahelyett, hogy ezeket egyszerű LLM problémaként fogná fel.",
+    "Aios": "AI-Native Operating Environment. Linux alapú OS Rust kernel modulokkal és Python AI runtime-mal. Multi-agent hangszerelés és szándékvezérelt (intent-driven) számítástechnika.",
+    "loomcycle": "Agentic rendszerek futtatói szubsztrátja (runtime substrate) - egy Go bináris, MCP-natív, menedzselt sandboxként és agent dev környezetként is konfigurálható.",
+    "agentruntime": "Egy átfogó platform AI ügynökök lokális környezetben történő futtatásához. Egységes futtatókörnyezetet biztosít különböző képességű és eszközökkel rendelkező LLM ügynökök számára."
 }
