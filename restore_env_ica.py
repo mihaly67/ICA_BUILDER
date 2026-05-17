@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Jules Swarm Worker Környezet Inicializáló
+Jules ICA System Környezet Inicializáló
 Telepíti az MCP függőségeket, majd elindítja a KeepAlive daemont és a lokális memória szinkronizálót.
 """
 import os
@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 def install_dependencies():
-    print("🔧 Swarm Worker Függőségek telepítése...")
+    print("🔧 ICA Függőségek telepítése...")
     try:
         subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "mcp", "paramiko"], check=True)
         subprocess.run("sudo apt-get update && sudo apt-get install -y sshpass", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -17,7 +17,7 @@ def install_dependencies():
         print(f"⚠️ Hiba a függőségek telepítésekor: {e}")
 
 def main():
-    print("=== 🐝 JULES SWARM WORKER INITIALIZATION ===")
+    print("=== 🐝 JULES ICA SYSTEM INITIALIZATION ===")
     install_dependencies()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -32,8 +32,8 @@ def main():
     if os.path.exists(memory_manager_path):
         subprocess.run([sys.executable, memory_manager_path, "--action", "start_session"])
 
-    print("🚀 A Worker készen áll a felhő-parancsokra!")
-    print("Kérlek, olvasd el az AGENTS_MX.md-t és húzd le az első Swarm Jobot az MCP-ről!")
+    print("🚀 Jules készen áll a felhő-parancsokra!")
+    print("Kérlek, olvasd el az AGENTS_ICA.md-t és kezdd el a munkát az ICA protokoll alapján!")
 
 if __name__ == "__main__":
     main()
