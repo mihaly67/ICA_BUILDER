@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Jules ICA Környezet Inicializáló
+Jules ICA System Környezet Inicializáló
 Telepíti az MCP függőségeket, majd elindítja a KeepAlive daemont és a lokális memória szinkronizálót.
 """
 import os

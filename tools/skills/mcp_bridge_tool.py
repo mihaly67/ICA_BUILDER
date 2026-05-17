@@ -19,7 +19,7 @@ async def run_mcp_client(tool_name, args_dict):
         args=[
             "-o", "StrictHostKeyChecking=no",
             f"misi@{os.environ.get('VPS_HOST', '5.189.163.88')}",
-            "/home/misi/Jules_mx/venv/bin/python3", 
+            "/home/misi/Jules_mx/venv/bin/python3",
             "/home/misi/Jules_mx/tools/skills/vps_mcp_server.py"
         ],
         env=os.environ.copy()
@@ -31,7 +31,7 @@ async def run_mcp_client(tool_name, args_dict):
             server_params.args = ["-p", os.environ.get("VPS_PWD"), "ssh"] + server_params.args
         else:
             print("⚠️ sshpass nem található, a jelszavas belépés nem fog működni! Próbálj kulcsot beállítani.", file=sys.stderr)
-            
+
     elif os.environ.get("VPS_SSH_KEY"):
         with open("temp_mcp_key", "w") as f:
             f.write(os.environ.get("VPS_SSH_KEY") + "\n")
@@ -44,10 +44,10 @@ async def run_mcp_client(tool_name, args_dict):
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
-                
+
                 # Meghívjuk a toolt
                 result = await session.call_tool(tool_name, arguments=args_dict)
-                
+
                 outputs = []
                 if hasattr(result, "content"):
                     for content in result.content:
@@ -69,7 +69,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Érvénytelen JSON argumentum: {e}")
         sys.exit(1)
-        
+
     try:
         result = asyncio.run(run_mcp_client(args.tool, args_dict))
         print(result)
