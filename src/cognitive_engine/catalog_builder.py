@@ -16,7 +16,11 @@ def _get_mock_catalog():
         "cognee-main": "Graph-alapú memóriakezelés és kognitív hálózatépítés LLM-eknek. Tudásgráfok (Knowledge Graph) integrálása.",
         "OmniParser": "Képernyőelemző Vision rendszer. Vizuális felületek (GUI) értelmezése, gombok bounding-boxainak kinyerése.",
         "bloop-main": "Szemantikus kódkereső engine. Rust alapú gyors kód indexelés.",
-        "anti-sycophancy-framework": "Keretrendszer az LLM-ek 'sycophancy' (megfelelési kényszer és hízelgés) viselkedésének csökkentésére. Módszertanok a tényszerű, objektív és az emberi véleménynek akár ellentmondó, de igaz válaszok kikényszerítésére (pl. TruthfulQA finomhangolás, System Prompt engineering)."
+        "anti-sycophancy-framework": "Keretrendszer az LLM-ek 'sycophancy' (megfelelési kényszer és hízelgés) viselkedésének csökkentésére. Módszertanok a tényszerű, objektív és az emberi véleménynek akár ellentmondó, de igaz válaszok kikényszerítésére.",
+        "sycophancy-eval": "Adathalmazok a 'Towards Understanding Sycophancy in Language Models' című cikkből az LLM szolgalelkűség kiértékelésére.",
+        "LLM-sycophancy": "Az 'Uncovering the Internal Origins of Sycophancy in Large Language Models' (AAAI'26) hivatalos kódja, amely a sycophancy belső eredetét kutatja.",
+        "awesome-llm-self-reflection": "Gyűjtemény (Awesome-list) az LLM-ek self-reflection és self-correction módszereiről.",
+        "mcp-structured-thinking": "TypeScript Model Context Protocol (MCP) szerver, amely lehetővé teszi az LLM-ek számára gondolattérképek programozott építését, kikényszerített 'metakognitív' önreflexióval."
     }
 
 def get_catalog():
