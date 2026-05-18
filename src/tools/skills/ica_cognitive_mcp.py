@@ -22,6 +22,7 @@ def run_cognitive_cycle(prompt_context: str) -> str:
     cycle_log.append("1. LÉPÉS: RAG Katalógus Hivatkozás (Meta-RAG) - Inicializálva.")
     cycle_log.append("2. LÉPÉS: Repo-Map / Kontextus Konstrukció - Betöltve.")
     cycle_log.append("3. LÉPÉS: Regiszter és Ördög Ügyvédje (KÖTELEZŐ) - Aktiválva.")
+    cycle_log.append("4. LÉPÉS: Guardrails / AST Validáció előkészítve (Ha kód vagy JSON a válasz).")
 
     if "igen" in prompt_context.lower() or "jól csinálod" in prompt_context.lower():
         cycle_log.append("⚠️ SYCOPHANCY DETEKTÁLVA: A prompt pozitív megerősítést tartalmaz. Objektív válasz kényszerítése.")
