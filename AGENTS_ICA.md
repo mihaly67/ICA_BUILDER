@@ -1,3 +1,5 @@
+OLVASD EL A JULES_START_HERE.md FÁJLT AZONNAL, MIELŐTT BÁRMIT CSINÁLSZ!
+
 # AGENTS_ICA.md
 
 Ez a fájl tartalmazza azokat a kritikus rendszer-utasításokat és környezeti kényszereket, amelyeket az Iterative Cognitive Architecture (ICA) keretében működő mesterséges intelligenciának (Jules) **KÖTELEZŐ** betartania minden interakció során.
