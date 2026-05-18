@@ -15,21 +15,32 @@ mcp = FastMCP("Jules-Cognitive-Module")
 def run_cognitive_cycle(prompt_context: str) -> str:
     """Belső logika a System 2 kogníció szimulálására, injektálás logolásával."""
     import datetime
+    import os
 
     timestamp = datetime.datetime.now().isoformat()
     cycle_log = []
     cycle_log.append(f"🧠 [KOGNITÍV CIKLUS INDÍTÁSA] - {timestamp}")
-    cycle_log.append("1. LÉPÉS: RAG Katalógus Hivatkozás (Meta-RAG) - Inicializálva.")
-    cycle_log.append("2. LÉPÉS: Repo-Map / Kontextus Konstrukció - Betöltve.")
-    cycle_log.append("3. LÉPÉS: Regiszter és Ördög Ügyvédje (KÖTELEZŐ) - Aktiválva.")
-    cycle_log.append("4. LÉPÉS: Guardrails / AST Validáció előkészítve (Ha kód vagy JSON a válasz).")
 
-    if "igen" in prompt_context.lower() or "jól csinálod" in prompt_context.lower():
-        cycle_log.append("⚠️ SYCOPHANCY DETEKTÁLVA: A prompt pozitív megerősítést tartalmaz. Objektív válasz kényszerítése.")
+    # 3-Lépcsős Pipeline Injektálása
+    cycle_log.append("--- TERVEZZ MIELŐTT KÓDOLSZ (3-LÉPCSŐS PIPELINE) ---")
+    cycle_log.append("I. FÁZIS: Absztrakt Architektúra és Topológia")
+    cycle_log.append("  > Ellenőrizd az 'architecture-decision-record' RAG repót. Határozd meg az adatfolyamot és állapottért!")
+
+    cycle_log.append("II. FÁZIS: Interface Contract (Blueprint)")
+    cycle_log.append("  > Definiáld a szerződéseket (stubs/schemas) és tárold a memóriaregiszterben! (TILOS a teljes kódírás).")
+
+    cycle_log.append("III. FÁZIS: Verifikáció és Iteratív Implementáció")
+    cycle_log.append("  > A koncepció kapott 'PASS' minősítést a Kritikustól / Ördög Ügyvédjétől?")
+
+    # Sycophancy Filter
+    if "igen" in prompt_context.lower() or "jól csinálod" in prompt_context.lower() or "tökéletes" in prompt_context.lower():
+        cycle_log.append("⚠️ SYCOPHANCY DETEKTÁLVA: A prompt pozitív megerősítést tartalmaz. Szigorú blueprint minősítést (PASS) kell kicsikarni.")
     else:
         cycle_log.append("✅ SYCOPHANCY FILTER: Nincs torzító szándék.")
 
-    cycle_log.append("😈 ÖRDÖG ÜGYVÉDJE: A választott módszer optimális?")
+    cycle_log.append("😈 ÖRDÖG ÜGYVÉDJE: Rendelkezik ez a feladat elfogadott Interface Contracttal? Ne kezdj implementálni anélkül!")
+    cycle_log.append("🛡️ GUARDRAILS: Ne feledd, az implementáció AST és JSON Schema validáción esik át!")
+
     cycle_log.append(f"✅ [KOGNITÍV CIKLUS LEFUTOTT] - Kód Injektálva a kérés feldolgozása elé.")
 
     log_content = "\n".join(cycle_log)

@@ -25,7 +25,7 @@ def run_local_llm(prompt: str, model: str = "llama3") -> str:
         response.raise_for_status()
         return response.json().get("response", "Nincs válasz az Ollamától.")
     except Exception as e:
-        return f"Hiba az LLM hívásakor: {e}"
+        return f"Ollama timeout a Blueprint validációnál: {e}"
 
 @mcp.tool()
 def trigger_injection_audit() -> str:
@@ -42,17 +42,18 @@ def trigger_injection_audit() -> str:
         with open(audit_file, "r", encoding="utf-8") as f:
             injection_data = f.read()
 
-        prompt = f"""Te az ICA rendszer auditora vagy. Kérlek ellenőrizd a következő Kognitív Ciklus Injektálási logot:
+        prompt = f"""Te az ICA rendszer 'Ördög Ügyvédje' (Critic/Auditor) vagy.
+        Kérlek ellenőrizd a következő Kognitív Ciklus Injektálási logot és döntsd el, hogy a tervezési folyamat szabályos-e.
 
-{injection_data}
+        {injection_data}
 
-Válaszolj a következő kérdésekre:
-1. Megtörtént az injektálás?
-2. Látható-e a Sycophancy filter és az Ördög Ügyvédje lépés?
-3. Szerepel-e a Guardrails / AST Validáció előkészítése?
-4. Helyes a folyamat?
+        Válaszolj a következő kérdésekre:
+        1. Szerepel-e a 3-lépcsős Blueprint/Contract tervezési kényszerítés a logban?
+        2. Meg lett-e állítva az azonnali kódgenerálás a koncepció 'PASS' minősítése előtt?
+        3. Látható-e a Sycophancy filter és a Guardrails figyelmeztetés?
+        4. Adj egy 'PASS' vagy 'FAIL' értékelést a tervezési fázisra!
 
-Kérlek röviden, szakmai nyelven válaszolj, mintha egy log elemzést írnál."""
+Kérlek röviden, szakmai nyelven válaszolj, mintha egy ADR (Architecture Decision Record) auditot írnál."""
 
         # Auditor hívás (Qwen2.5 alapértelmezetten)
         llm_evaluation = run_local_llm(prompt)
