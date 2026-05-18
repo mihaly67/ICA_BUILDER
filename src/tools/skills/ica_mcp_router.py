@@ -15,6 +15,12 @@ from mcp.server.fastmcp import FastMCP
 try:
     import ica_mcp_server as io_server
     import ica_cognitive_mcp as cognitive_server
+    import ica_auditor_mcp as auditor_server
+except ImportError:
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    import ica_mcp_server as io_server
+    import ica_cognitive_mcp as cognitive_server
+    import ica_auditor_mcp as auditor_server
 except ImportError:
     # Biztosítás, ha a futtatás más mappából történik
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -29,6 +35,9 @@ for name, tool_func in io_server.mcp._tool_manager._tools.items():
     router_mcp.tool(name=name, description=tool_func.description)(tool_func.fn)
 
 for name, tool_func in cognitive_server.mcp._tool_manager._tools.items():
+    router_mcp.tool(name=name, description=tool_func.description)(tool_func.fn)
+
+for name, tool_func in auditor_server.mcp._tool_manager._tools.items():
     router_mcp.tool(name=name, description=tool_func.description)(tool_func.fn)
 
 if __name__ == "__main__":

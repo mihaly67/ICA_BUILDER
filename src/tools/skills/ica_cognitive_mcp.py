@@ -13,23 +13,36 @@ from mcp.server.fastmcp import FastMCP
 mcp = FastMCP("Jules-Cognitive-Module")
 
 def run_cognitive_cycle(prompt_context: str) -> str:
-    """Belső logika a System 2 kogníció szimulálására."""
+    """Belső logika a System 2 kogníció szimulálására, injektálás logolásával."""
+    import datetime
+
+    timestamp = datetime.datetime.now().isoformat()
     cycle_log = []
-    cycle_log.append("🧠 [KOGNITÍV CIKLUS INDÍTÁSA]")
+    cycle_log.append(f"🧠 [KOGNITÍV CIKLUS INDÍTÁSA] - {timestamp}")
     cycle_log.append("1. LÉPÉS: RAG Katalógus Hivatkozás (Meta-RAG) - Inicializálva.")
     cycle_log.append("2. LÉPÉS: Repo-Map / Kontextus Konstrukció - Betöltve.")
     cycle_log.append("3. LÉPÉS: Regiszter és Ördög Ügyvédje (KÖTELEZŐ) - Aktiválva.")
 
-    # Sycophancy Filter
     if "igen" in prompt_context.lower() or "jól csinálod" in prompt_context.lower():
         cycle_log.append("⚠️ SYCOPHANCY DETEKTÁLVA: A prompt pozitív megerősítést tartalmaz. Objektív válasz kényszerítése.")
     else:
         cycle_log.append("✅ SYCOPHANCY FILTER: Nincs torzító szándék.")
 
-    cycle_log.append("😈 ÖRDÖG ÜGYVÉDJE: Valóban ez a leghatékonyabb megoldás? Esetleg a router túlzott komplexitást okoz? (Válasz: Jelenleg a router a skálázhatóság miatt szükséges).")
-    cycle_log.append("✅ [KOGNITÍV CIKLUS LEFUTOTT]")
+    cycle_log.append("😈 ÖRDÖG ÜGYVÉDJE: A választott módszer optimális?")
+    cycle_log.append(f"✅ [KOGNITÍV CIKLUS LEFUTOTT] - Kód Injektálva a kérés feldolgozása elé.")
 
-    return "\n".join(cycle_log)
+    log_content = "\n".join(cycle_log)
+
+    # Kimentjük az injektálást egy auditálható fájlba ("gomb" megnyomásának nyoma)
+    try:
+        os.makedirs(os.path.expanduser("~/Jules_mx/alerts/"), exist_ok=True)
+        audit_file = os.path.expanduser("~/Jules_mx/alerts/latest_injection.txt")
+        with open(audit_file, "w", encoding="utf-8") as af:
+            af.write(f"PROMPT_CONTEXT: {prompt_context}\n\nINJECTION_LOG:\n{log_content}")
+    except Exception as e:
+        cycle_log.append(f"⚠️ Hiba az injektálás naplózásakor: {e}")
+
+    return log_content
 
 @mcp.tool()
 def inject_cognitive_cycle(prompt_context: str) -> str:
