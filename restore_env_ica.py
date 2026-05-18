@@ -30,10 +30,8 @@ def check_vps_llama_status():
         try:
             # Egy gyors teszt lekérdezés a VPS-en lévő Llamához
             cmd = [sys.executable, llama_client_path, "Ping! Él a kapcsolat?", "--model", "qwen2.5:1.5b"]
-            # Szükséges az env változók explicit átadása a futtató shellnek a jelszóval
+            # A futtató környezetből kell érkeznie a VPS_PWD-nek biztonsági okokból. Nincs hardkódolás!
             env = os.environ.copy()
-            if "VPS_PWD" not in env:
-                 env["VPS_PWD"] = "1104"
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=env)
 
             if "LLAMA VÁLASZ" in result.stdout:
