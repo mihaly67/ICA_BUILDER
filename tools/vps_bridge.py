@@ -7,31 +7,27 @@ VPS_PWD = os.environ.get("VPS_PWD")
 VPS_USER = os.environ.get("VPS_USER", "misi")
 
 def run_on_vps(cmd):
-    """
-    Futtat egy shell parancsot a VPS-en SSH-n (vagy sshpass-on) keresztül.
-    """
     ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", f"{VPS_USER}@{VPS_HOST}", cmd]
-
+    env = os.environ.copy()
     if VPS_PWD:
         ssh_cmd = ["sshpass", "-e"] + ssh_cmd
+        env["SSHPASS"] = VPS_PWD
 
     try:
-        result = subprocess.run(ssh_cmd, check=True, capture_output=True, text=True)
+        result = subprocess.run(ssh_cmd, check=True, capture_output=True, text=True, env=env)
         return True, result.stdout
     except subprocess.CalledProcessError as e:
         return False, e.stderr
 
 def upload_to_vps(local_file, remote_target):
-    """
-    Feltölt egy fájlt a VPS-re SCP (vagy sshpass+SCP) használatával.
-    """
     scp_cmd = ["scp", "-o", "StrictHostKeyChecking=no", local_file, f"{VPS_USER}@{VPS_HOST}:{remote_target}"]
-
+    env = os.environ.copy()
     if VPS_PWD:
         scp_cmd = ["sshpass", "-e"] + scp_cmd
+        env["SSHPASS"] = VPS_PWD
 
     try:
-        subprocess.run(scp_cmd, check=True, capture_output=True, text=True)
+        subprocess.run(scp_cmd, check=True, capture_output=True, text=True, env=env)
         return True, "Feltöltés sikeres."
     except subprocess.CalledProcessError as e:
         return False, e.stderr
@@ -51,7 +47,6 @@ if __name__ == '__main__':
             print(f"Hiba a feltöltés során: {msg}", file=sys.stderr)
             sys.exit(1)
     else:
-        # Minden más esetben parancsfuttatás a VPS-en
         cmd_to_run = " ".join(sys.argv[1:])
         success, msg = run_on_vps(cmd_to_run)
         print(msg)
