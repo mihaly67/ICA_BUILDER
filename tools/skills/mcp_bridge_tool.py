@@ -20,7 +20,7 @@ async def run_mcp_client(tool_name, args_dict):
             "-o", "StrictHostKeyChecking=no",
             f"misi@{os.environ.get('VPS_HOST', '5.189.163.88')}",
             "/home/misi/Jules_mx/venv/bin/python3",
-            "/home/misi/Jules_ICA_Builder/ica_mcp_server.py"
+            "/home/misi/Jules_ICA_Builder/src/tools/skills/ica_mcp_router.py"
         ],
         env=os.environ.copy()
     )
@@ -59,7 +59,7 @@ async def run_mcp_client(tool_name, args_dict):
             os.remove("temp_mcp_key")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Jules ICA MCP Kliens (Hivatalos SDK)")
+    parser = argparse.ArgumentParser(description="Jules ICA Router MCP Kliens (Hivatalos SDK)")
     parser.add_argument("--tool", type=str, required=True, help="Az MCP tool neve")
     parser.add_argument("--args", type=str, required=True, help="JSON argumentumok")
     
