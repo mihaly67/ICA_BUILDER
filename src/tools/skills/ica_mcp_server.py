@@ -260,6 +260,14 @@ async def write_file_mcp(filepath: str, content: str) -> str:
 
     # Fájl mentése
 
+# 2.5 Pipeline Gate: TDD Guardrail (Test-Driven Development kényszer)
+    if target_path.endswith('.py'):
+        import ica_guardrails_mcp as guardrails
+        target_dir = os.path.dirname(os.path.abspath(target_path))
+        is_tdd_valid, tdd_msg = guardrails.validate_tdd_compliance(target_path, target_dir)
+        if not is_tdd_valid:
+             return f"🚨 BLOKKOLVA [TDD GUARDRAIL]: {tdd_msg}"
+
     # 3. Pipeline Gate: Szintaktikai JSON Validáció
     if target_path.endswith('.json'):
         import json
@@ -279,7 +287,7 @@ async def write_file_mcp(filepath: str, content: str) -> str:
         if is_blueprint:
              audit_msg += "[ADR SÉMA: PASS] "
         elif target_path.endswith('.py'):
-             audit_msg += "[PIPELINE: PASS] [AST: PASS]"
+             audit_msg += "[PIPELINE: PASS] [AST: PASS] [TDD: PASS]"
         else:
              audit_msg += "[PIPELINE: PASS]"
 

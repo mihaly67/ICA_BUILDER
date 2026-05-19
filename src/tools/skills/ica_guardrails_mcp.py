@@ -10,6 +10,41 @@ import os
 import ast
 from mcp.server.fastmcp import FastMCP
 
+def validate_tdd_compliance(filepath: str, work_dir: str) -> tuple[bool, str]:
+    """
+    TDD Guardrail: Ellenőrzi, hogy egy implementációs kódhoz létezik-e előzetesen megírt tesztfájl.
+    """
+    import os
+
+    filename = os.path.basename(filepath)
+
+    # Ha nem python fájl, vagy config fájl, nem kényszerítjük (egyelőre) a TDD-t
+    if not filepath.endswith(".py"):
+        return True, "Nem Python fájl, TDD ellenőrzés átugorva."
+
+    # Ha maga a fájl egy teszt, azt engedjük lementeni (hiszen ezzel kezdődik a TDD)
+    if filename.startswith("test_") or filename.endswith("_test.py"):
+        return True, "Tesztfájl írása engedélyezve (TDD Red fázis)."
+
+    # Speciális fájlok, amiknek nem kell teszt (mcp szerverek, scriptek)
+    if "mcp" in filename.lower() or filename.startswith("vps_"):
+         return True, "Rendszerscript írása engedélyezve (TDD átugorva)."
+
+    # Ha éles logikát (implementációt) írunk, keresni kell egy hozzá tartozó tesztet
+    test_filename = f"test_{filename}"
+    test_filepath = os.path.join(work_dir, test_filename)
+
+    if not os.path.exists(test_filepath):
+        # Keresünk egy "tests" mappát is
+        tests_dir = os.path.join(work_dir, "tests")
+        if os.path.exists(tests_dir) and os.path.exists(os.path.join(tests_dir, test_filename)):
+            return True, f"Tesztfájl ({test_filename}) megtalálva a tests mappában. Implementáció engedélyezve."
+
+        return False, f"TDD GUARDRAIL SÉRTÉS: Nem találtam tesztfájlt ({test_filename}) az implementációhoz! A Test-Driven Development szabályai szerint előbb a tesztet kell megírnod és elmentened."
+
+    return True, f"Tesztfájl ({test_filename}) megtalálva. Implementáció engedélyezve."
+
+
 mcp = FastMCP("Jules-Guardrails-Module")
 
 def validate_python_ast(code: str) -> tuple[bool, str]:
