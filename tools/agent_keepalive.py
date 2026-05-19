@@ -18,7 +18,7 @@ def run_daemon():
 
     # Próbáljuk megtalálni a memóriafájlt a Knowledge_Base mappában
     base_dir = os.path.dirname(script_dir)
-    memory_file = os.path.join(base_dir, "Knowledge_Base", "agent_memory.jsonl")
+    memory_file = os.path.join(base_dir, "agent_memory.jsonl")
 
     # Mivel egy agent turn kb 2-5 perc, 15-20 perc memóriaírás nélkül már aggasztó
     MEMORY_STALE_WARNING_SECONDS = 20 * 60
@@ -41,11 +41,9 @@ def run_daemon():
 
                 if time_since_modified > MEMORY_STALE_WARNING_SECONDS:
                     minutes_stale = int(time_since_modified / 60)
-                    print(f"
-🚨 [SUPERVISOR ALERT] AZ AGENT ELFELEJTETTE ÍRNI A MEMÓRIÁT! 🚨")
+                    print(f"\n🚨 [SUPERVISOR ALERT] AZ AGENT ELFELEJTETTE ÍRNI A MEMÓRIÁT! 🚨")
                     print(f"⚠️ Utolsó írás: {minutes_stale} perce történt.")
-                    print(f"👉 KÖTELEZŐ AKCIÓ: Futtasd azonnal a 'python3 ENVIRONMENT_SETUP/agent_memory_manager.py --action write ...' parancsot a szinkronizációhoz!
-", flush=True)
+                    print(f"👉 KÖTELEZŐ AKCIÓ: Futtasd azonnal a 'python3 ENVIRONMENT_SETUP/agent_memory_manager.py --action write ...' parancsot a szinkronizációhoz!\n", flush=True)
             else:
                  print(f"⚠️ [SUPERVISOR ALERT] A memória fájl ({memory_file}) NEM LÉTEZIK! Használd a memory managert a létrehozásához!", flush=True)
 
@@ -56,12 +54,10 @@ def run_daemon():
             time.sleep(15)
 
         except KeyboardInterrupt:
-            print("
-💓 [Supervisor Daemon] Leállítva.", flush=True)
+            print("\n💓 [Supervisor Daemon] Leállítva.", flush=True)
             break
         except Exception as e:
-            print(f"
-❌ [Supervisor Daemon] Kritikus hiba a háttérben: {e}", file=sys.stderr, flush=True)
+            print(f"\n❌ [Supervisor Daemon] Kritikus hiba a háttérben: {e}", file=sys.stderr, flush=True)
             # Az önreflexió jegyében, ha lehal a daemon, automatikusan próbáljon újraindulni kis pihenő után,
             # hogy ne maradjon a rendszer szívverés nélkül (rekurzió nélkül).
             time.sleep(10)

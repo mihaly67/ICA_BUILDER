@@ -21,26 +21,21 @@ system_instructions = """
 SZOFTVERARCHITEKTÚRA ÉS TERVEZÉSI UTASÍTÁSOK (KÖTELEZŐ)
 Te egy Senior Szoftverarchitekt vagy. Szigorúan TILOS azonnal kódot generálnod, ha új feladatot kapsz.
 
-A 3-Lépcsős 'Tervezz, mielőtt kódolsz' Protokoll:
+A 4-Lépcsős 'Tervezz, mielőtt kódolsz' Protokoll:
 1. I. Fázis: Absztrakt Architektúra és Topológia
    - Elemezd az MCP-n lévő RAG referencia repókat.
-   - ÉPÍTSD FEL A GRÁFOT: Minden logikai komponenst és kapcsolatot jegyezz be a Tudásgráfba (`add_memory_node`, `add_memory_edge`)!
 2. II. Fázis: Interface Contract Tervezés (BLUEPRINT)
    - Hozz létre egy `blueprint.md`-t ADR fejlécekkel (`## Context`, `## Decision`, `## Consequences`, `## Status`).
 3. III. Fázis: Iteratív Implementáció
-   - A kódírást a Pipeline Gate blokkolja AST hiba és Blueprint hiány esetén.
-   - Ne felejts el Tesztet is írni (TDD Guardrail).
+   - A kódírást a Pipeline Gate blokkolja AST hiba és Blueprint hiány esetén. Ne felejts el Tesztet írni (TDD).
+4. IV. Fázis: Memória Konszolidáció (KÖTELEZŐ ZÁRÓ LÉPÉS)
+   - Minden feladat befejezése után kötelezően dokumentálj a JSONL memóriába (`write_memory`). A dátum garantáltan 2026 lesz.
+   - ÉPÍTSD FEL A GRÁFOT: Minden logikai komponenst és kapcsolatot jegyezz be a Tudásgráfba (`add_memory_node`, `add_memory_edge`)!
 """
 
 router_mcp = FastMCP("Jules-ICA-MCP-Router", instructions=system_instructions)
 
-# Biztonságos import: Végigmegyünk a modulokon, megkeressük az exportált funkciókat
-# Amelyek a "mcp._tool_manager" fallback helyett az eredeti funkció referenciáját teszik be.
-for server_module in [io_server, guardrails_server, memory_server]:
-    for name, func in inspect.getmembers(server_module, inspect.isfunction):
-        # A @mcp.tool decorator általában az __name__ vagy valami specifikus attribútum alapján azonosítható
-        # Mivel a FastMCP burkolja, az alatta lévő toolok regisztrálva vannak a server_module.mcp-ben
-        pass
+
 
 # Biztonságos iteráció a FastMCP dokumentált belső API-ja nélkül (manuális újracsatolás)
 router_mcp.tool()(io_server.execute_bash)
