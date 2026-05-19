@@ -107,44 +107,42 @@ def search_rag_labels(query: str) -> str:
 @mcp.tool()
 async def execute_bash(command: str) -> str:
     """
-    Futtat egy bash parancsot a VPS-en.
+    Futtat egy bash parancsot a VPS-en (Izolált Bubblewrap Sandboxban!).
+    A fájlrendszer nagy része (pl. a RAG adatbázisok és a /) Read-Only!
     PIPELINE GATE: Fájlba írás (>, >>, tee) SZIGORÚAN TILOS a kódgenerálási gát megkerülése miatt!
     Használd a write_file_mcp eszközt!
     """
     import re
-    # 1. Biztonsági kiskapu bezárása (Fájlírás blokkolása bash-en keresztül)
-    blocked_patterns = [r'(?<!2)>', r'>>', r'\\btee\\b']
+    blocked_patterns = [r'(?<!2)>', r'>>', r'\btee\b']
     for pattern in blocked_patterns:
         if re.search(pattern, command):
             return f"🚨 BLOKKOLVA [BASH GUARDRAIL]: Fájlba írás vagy fájl-átirányítás (>, >>, tee) a Bash-en keresztül szigorúan TILOS! Az AI-nak kötelezően a Pipeline Gate-tel védett `write_file_mcp` eszközt kell használnia erre a célra!"
 
-    # 2. Veszélyes műveletek blokkolása
     if "rm -rf /" in command or "mkfs" in command:
          return "Hiba: Veszélyes parancs letiltva a sandboxban."
 
     try:
         import subprocess
         import os
-
-        # A munkakönyvtárat engedjük írni
         work_dir = os.path.expanduser("~/Jules_ICA_Builder/")
 
-        # Visszaállunk a standard processz-futtatásra, de a RAG mappát védjük
-        if "BRAIN2_DEV_RAG" in command and "rm" in command:
-             return "🚨 BLOKKOLVA [BASH GUARDRAIL]: Tilos a RAG adatbázis törlése!"
+        bwrap_cmd = [
+            "bwrap",
+            "--ro-bind", "/", "/",
+            "--bind", "/tmp", "/tmp",
+            "--bind", work_dir, work_dir,
+            "--dev", "/dev",
+            "--proc", "/proc",
+            "--die-with-parent",
+            "--",
+            "/bin/bash", "-c", command
+        ]
 
-        result = subprocess.run(
-            command,
-            shell=True,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            cwd=work_dir
-        )
+        result = subprocess.run(bwrap_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=work_dir)
         return f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     except subprocess.CalledProcessError as e:
         return f"Hiba a Bash futtatásakor (Kód: {e.returncode}):\nSTDOUT: {e.stdout}\nSTDERR: {e.stderr}"
+
 
 
 
@@ -598,33 +596,37 @@ async def github_read_file(owner: str, repo: str, file_path: str, branch: str = 
 @mcp.tool()
 async def execute_python(code: str) -> str:
     """
-    Lefuttat egy Python kódot a VPS-en.
+    Lefuttat egy Python kódot egy IZOLÁLT Bubblewrap környezetben a VPS-en.
     Hasznos adatelemzéshez, matematikai számításokhoz vagy gyors logikai tesztekhez.
     """
     import os
     import subprocess
 
-    # Létrehozunk egy átmeneti fájlt a kódnak
     work_dir = os.path.expanduser("~/Jules_ICA_Builder/")
     temp_file = os.path.join(work_dir, "temp_interpreter_script.py")
     try:
         with open(temp_file, "w", encoding="utf-8") as f:
             f.write(code)
 
-        result = subprocess.run(
-            ["/home/misi/Jules_mx/venv/bin/python3", temp_file],
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=10,
-            cwd=work_dir
-        )
+        bwrap_cmd = [
+            "bwrap",
+            "--ro-bind", "/", "/",
+            "--bind", "/tmp", "/tmp",
+            "--bind", work_dir, work_dir,
+            "--dev", "/dev",
+            "--proc", "/proc",
+            "--die-with-parent",
+            "--",
+            "/home/misi/Jules_mx/venv/bin/python3", temp_file
+        ]
+
+        result = subprocess.run(bwrap_cmd, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10, cwd=work_dir)
         return f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     except subprocess.TimeoutExpired:
         return "Hiba: A Python szkript futása időtúllépés miatt megszakítva (végtelen ciklus?)."
     except Exception as e:
         return f"Kritikus hiba a futtatáskor: {e}"
+
 
 
 
