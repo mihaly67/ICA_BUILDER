@@ -113,7 +113,7 @@ async def execute_bash(command: str) -> str:
     """
     import re
     # 1. Biztonsági kiskapu bezárása (Fájlírás blokkolása bash-en keresztül)
-    blocked_patterns = [r'(?<!2)>', r'>>', r'\btee\b']
+    blocked_patterns = [r'(?<!2)>', r'>>', r'tee']
     for pattern in blocked_patterns:
         if re.search(pattern, command):
             return f"🚨 BLOKKOLVA [BASH GUARDRAIL]: Fájlba írás vagy fájl-átirányítás (>, >>, tee) a Bash-en keresztül szigorúan TILOS! Az AI-nak kötelezően a Pipeline Gate-tel védett `write_file_mcp` eszközt kell használnia erre a célra!"
@@ -125,6 +125,14 @@ async def execute_bash(command: str) -> str:
     try:
         import subprocess
         import os
+
+        # A munkakönyvtárat engedjük írni
+        work_dir = os.path.expanduser("~/Jules_ICA_Builder/")
+
+        # Visszaállunk a standard processz-futtatásra, de a RAG mappát védjük
+        if "BRAIN2_DEV_RAG" in command and "rm" in command:
+             return "🚨 BLOKKOLVA [BASH GUARDRAIL]: Tilos a RAG adatbázis törlése!"
+
         result = subprocess.run(
             command,
             shell=True,
@@ -132,11 +140,15 @@ async def execute_bash(command: str) -> str:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            cwd=os.path.expanduser("~/Jules_mx/")
+            cwd=work_dir
         )
         return f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     except subprocess.CalledProcessError as e:
         return f"Hiba a Bash futtatásakor (Kód: {e.returncode}):\nSTDOUT: {e.stdout}\nSTDERR: {e.stderr}"
+
+
+
+
 
 
 @mcp.tool()
@@ -586,17 +598,19 @@ async def github_read_file(owner: str, repo: str, file_path: str, branch: str = 
 @mcp.tool()
 async def execute_python(code: str) -> str:
     """
-    VPS Code Interpreter: Futtat egy Python kódrészletet (snippetet) egy eldobható, biztonságos környezetben a VPS-en.
+    Lefuttat egy Python kódot a VPS-en.
     Hasznos adatelemzéshez, matematikai számításokhoz vagy gyors logikai tesztekhez.
     """
+    import os
+    import subprocess
+
     # Létrehozunk egy átmeneti fájlt a kódnak
-    temp_file = os.path.expanduser("~/Jules_mx/temp/interpreter_script.py")
+    work_dir = os.path.expanduser("~/Jules_ICA_Builder/")
+    temp_file = os.path.join(work_dir, "temp_interpreter_script.py")
     try:
-        os.makedirs(os.path.dirname(temp_file), exist_ok=True)
         with open(temp_file, "w", encoding="utf-8") as f:
             f.write(code)
 
-        # Lefuttatjuk a virtuális környezet Pythonjával (5 másodperces timeout a végtelen ciklusok ellen)
         result = subprocess.run(
             ["/home/misi/Jules_mx/venv/bin/python3", temp_file],
             check=False,
@@ -604,13 +618,17 @@ async def execute_python(code: str) -> str:
             stderr=subprocess.PIPE,
             text=True,
             timeout=10,
-            cwd=os.path.expanduser("~/Jules_mx/")
+            cwd=work_dir
         )
         return f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     except subprocess.TimeoutExpired:
         return "Hiba: A Python szkript futása időtúllépés miatt megszakítva (végtelen ciklus?)."
     except Exception as e:
         return f"Kritikus hiba a futtatáskor: {e}"
+
+
+
+
 
 # --- RAG ÉS MEMÓRIA (ARCHIVAL & RECALL) ESZKÖZÖK ---
 
