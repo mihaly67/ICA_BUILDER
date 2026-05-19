@@ -184,15 +184,83 @@ async def git_commit_and_push(repo_path: str, commit_message: str, branch: str =
 
 @mcp.tool()
 async def write_file_mcp(filepath: str, content: str) -> str:
-    """Fájl írása vagy felülírása a VPS-en. Használd konfigurációk vagy kódrészletek mentésére a VPS lemezére."""
-    target_file = os.path.expanduser(filepath)
+    """
+    Fájl írása vagy felülírása a VPS-en.
+    PIPELINE GATE: Csak akkor ír, ha van blueprint.md ami tartalmazza a HIVATALOS ADR struktúrát!
+    """
+    import os
+    import ast
+
+    target_path = os.path.expanduser(filepath)
+    is_blueprint = "blueprint.md" in target_path.lower()
+
+    # 1. Pipeline Gate: Blueprint tartalom / ADR Séma ellenőrzése
+    required_adr_headers = ["## context", "## decision", "## consequences", "## status"]
+
+    if is_blueprint:
+        # Ha a blueprint-et írjuk éppen, megvizsgáljuk, hogy az LLM nem csak halandzsát ír-e bele
+        content_lower = content.lower()
+        missing_headers = [h for h in required_adr_headers if h not in content_lower]
+        if missing_headers:
+            return f"🚨 BLOKKOLVA [ADR SÉMA GUARDRAIL]: A `blueprint.md` nem felel meg a Michael Nygard (vagy MADR) Architecture Decision Record szabványnak!\nHiányzó kötelező fejezetek: {missing_headers}.\nA RAG adatbázis szerint tilos halandzsa tervrajzot menteni."
+    else:
+        # Ha kódot / mást írunk, ellenőrizzük, hogy létezik-e és érvényes-e a blueprint
+        work_dir = os.path.dirname(target_path)
+        blueprint_found = False
+        blueprint_path = ""
+        while work_dir and work_dir != "/":
+            potential_path = os.path.join(work_dir, "blueprint.md")
+            if os.path.exists(potential_path):
+                blueprint_found = True
+                blueprint_path = potential_path
+                break
+            work_dir = os.path.dirname(work_dir)
+
+        if not blueprint_found:
+             blueprint_path = os.path.expanduser("~/Jules_ICA_Builder/blueprint.md")
+             if os.path.exists(blueprint_path):
+                 blueprint_found = True
+
+        if not blueprint_found:
+             return "🚨 BLOKKOLVA [PIPELINE GATE]: Nem találtam `blueprint.md` dokumentumot! Tilos kódot írni a tervezési fázis lezárása nélkül!"
+
+        # Ha megvan a fájl, olvassuk ki a tartalmát, és nézzük meg, hogy halandzsa-e (esetleg valaki üresen hozta létre)
+        with open(blueprint_path, "r", encoding="utf-8") as bf:
+             bp_content = bf.read().lower()
+             missing_headers = [h for h in required_adr_headers if h not in bp_content]
+             if missing_headers:
+                  return f"🚨 BLOKKOLVA [PIPELINE GATE]: A meglévő `blueprint.md` érvénytelen (nem igazi ADR tervrajz)!\nHiányzó fejezetek: {missing_headers}. Csinálj rendes tervet a kódolás előtt!"
+
+    # 2. Pipeline Gate: AST Szintaktikai ellenőrzés Python kódok esetén
+    if target_path.endswith('.py'):
+        try:
+            ast.parse(content)
+        except SyntaxError as e:
+            return f"🚨 BLOKKOLVA [AST GUARDRAIL]: A generált Python kód szintaktikailag hibás! Nem kerül mentésre.\nHiba: {e.msg} a(z) {e.lineno}. sorban."
+        except Exception as e:
+            return f"🚨 BLOKKOLVA [AST GUARDRAIL]: Ismeretlen parser hiba: {e}"
+
+    # Fájl mentése
+    target_dir = os.path.dirname(os.path.abspath(target_path))
+    if target_dir:
+        os.makedirs(target_dir, exist_ok=True)
     try:
-        os.makedirs(os.path.dirname(os.path.abspath(target_file)), exist_ok=True)
-        with open(target_file, "w", encoding="utf-8") as f:
+        with open(target_path, "w", encoding="utf-8") as f:
             f.write(content)
-        return f"✅ Fájl sikeresen mentve: {target_file}"
+
+        audit_msg = "Mentés sikeres. "
+        if is_blueprint:
+             audit_msg += "[ADR SÉMA: PASS] "
+        elif target_path.endswith('.py'):
+             audit_msg += "[PIPELINE: PASS] [AST: PASS]"
+        else:
+             audit_msg += "[PIPELINE: PASS]"
+
+        return f"✅ {audit_msg} Fájl: {target_path}"
     except Exception as e:
-        return f"Hiba a fájl írásakor: {e}"
+        return f"Hiba íráskor: {str(e)}"
+
+
 
 
 import urllib.request
