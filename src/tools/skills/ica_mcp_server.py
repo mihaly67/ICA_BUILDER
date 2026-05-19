@@ -106,8 +106,25 @@ def search_rag_labels(query: str) -> str:
 
 @mcp.tool()
 async def execute_bash(command: str) -> str:
-    """Futtat egy bash parancsot a VPS-en és visszatér a kimenettel. Használd nagy erőforrásigényű scriptek elindításához."""
+    """
+    Futtat egy bash parancsot a VPS-en.
+    PIPELINE GATE: Fájlba írás (>, >>, tee) SZIGORÚAN TILOS a kódgenerálási gát megkerülése miatt!
+    Használd a write_file_mcp eszközt!
+    """
+    import re
+    # 1. Biztonsági kiskapu bezárása (Fájlírás blokkolása bash-en keresztül)
+    blocked_patterns = [r'(?<!2)>', r'>>', r'\btee\b']
+    for pattern in blocked_patterns:
+        if re.search(pattern, command):
+            return f"🚨 BLOKKOLVA [BASH GUARDRAIL]: Fájlba írás vagy fájl-átirányítás (>, >>, tee) a Bash-en keresztül szigorúan TILOS! Az AI-nak kötelezően a Pipeline Gate-tel védett `write_file_mcp` eszközt kell használnia erre a célra!"
+
+    # 2. Veszélyes műveletek blokkolása
+    if "rm -rf /" in command or "mkfs" in command:
+         return "Hiba: Veszélyes parancs letiltva a sandboxban."
+
     try:
+        import subprocess
+        import os
         result = subprocess.run(
             command,
             shell=True,
@@ -119,7 +136,8 @@ async def execute_bash(command: str) -> str:
         )
         return f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     except subprocess.CalledProcessError as e:
-        return f"Hibakód: {e.returncode}\nSTDOUT:\n{e.stdout}\nSTDERR:\n{e.stderr}"
+        return f"Hiba a Bash futtatásakor (Kód: {e.returncode}):\nSTDOUT: {e.stdout}\nSTDERR: {e.stderr}"
+
 
 @mcp.tool()
 async def list_files_mcp(directory: str) -> str:
@@ -241,6 +259,15 @@ async def write_file_mcp(filepath: str, content: str) -> str:
             return f"🚨 BLOKKOLVA [AST GUARDRAIL]: Ismeretlen parser hiba: {e}"
 
     # Fájl mentése
+
+    # 3. Pipeline Gate: Szintaktikai JSON Validáció
+    if target_path.endswith('.json'):
+        import json
+        try:
+            json.loads(content)
+        except json.JSONDecodeError as e:
+            return f"🚨 BLOKKOLVA [JSON GUARDRAIL]: A generált JSON fájl szintaktikailag hibás vagy csonkolt! Nem kerül mentésre.\nHiba: {e}"
+
     target_dir = os.path.dirname(os.path.abspath(target_path))
     if target_dir:
         os.makedirs(target_dir, exist_ok=True)
