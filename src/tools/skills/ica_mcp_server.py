@@ -184,15 +184,47 @@ async def git_commit_and_push(repo_path: str, commit_message: str, branch: str =
 
 @mcp.tool()
 async def write_file_mcp(filepath: str, content: str) -> str:
-    """Fájl írása vagy felülírása a VPS-en. Használd konfigurációk vagy kódrészletek mentésére a VPS lemezére."""
-    target_file = os.path.expanduser(filepath)
+    """
+    Fájl írása vagy felülírása a VPS-en.
+    PIPELINE GATE: Csak akkor ír, ha van blueprint.md. Python kódnál AST ellenőrzést is végez.
+    """
+    import os
+    import ast
+
+    target_path = os.path.expanduser(filepath)
+
+    # 1. Pipeline Gate: Blueprint ellenőrzés
+    if "blueprint.md" not in target_path.lower():
+        work_dir = os.path.dirname(target_path)
+        blueprint_found = False
+        while work_dir and work_dir != "/":
+            if os.path.exists(os.path.join(work_dir, "blueprint.md")):
+                blueprint_found = True
+                break
+            work_dir = os.path.dirname(work_dir)
+
+        if not blueprint_found and not os.path.exists(os.path.expanduser("~/Jules_ICA_Builder/blueprint.md")):
+             return "🚨 BLOKKOLVA [PIPELINE GATE]: Nem találtam `blueprint.md` dokumentumot! Tilos kódot írni a tervezési fázis (Architecture -> Blueprint) lezárása és dokumentálása nélkül!"
+
+    # 2. Pipeline Gate: AST Szintaktikai ellenőrzés Python kódok esetén
+    if target_path.endswith('.py'):
+        try:
+            ast.parse(content)
+        except SyntaxError as e:
+            return f"🚨 BLOKKOLVA [AST GUARDRAIL]: A generált Python kód szintaktikailag hibás! Nem kerül mentésre.\nHiba: {e.msg} a(z) {e.lineno}. sorban."
+        except Exception as e:
+            return f"🚨 BLOKKOLVA [AST GUARDRAIL]: Ismeretlen parser hiba: {e}"
+
+    target_dir = os.path.dirname(os.path.abspath(target_path))
+    if target_dir:
+        os.makedirs(target_dir, exist_ok=True)
     try:
-        os.makedirs(os.path.dirname(os.path.abspath(target_file)), exist_ok=True)
-        with open(target_file, "w", encoding="utf-8") as f:
+        with open(target_path, "w", encoding="utf-8") as f:
             f.write(content)
-        return f"✅ Fájl sikeresen mentve: {target_file}"
+        return f"✅ Fájl sikeresen mentve: {target_path} (A kód átment a biztonsági szűrőkön)."
     except Exception as e:
-        return f"Hiba a fájl írásakor: {e}"
+        return f"Hiba íráskor: {str(e)}"
+
 
 
 import urllib.request
