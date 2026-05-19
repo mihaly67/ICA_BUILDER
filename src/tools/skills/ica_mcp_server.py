@@ -113,7 +113,7 @@ async def execute_bash(command: str) -> str:
     """
     import re
     # 1. Biztonsági kiskapu bezárása (Fájlírás blokkolása bash-en keresztül)
-    blocked_patterns = [r'(?<!2)>', r'>>', r'tee']
+    blocked_patterns = [r'(?<!2)>', r'>>', r'\\btee\\b']
     for pattern in blocked_patterns:
         if re.search(pattern, command):
             return f"🚨 BLOKKOLVA [BASH GUARDRAIL]: Fájlba írás vagy fájl-átirányítás (>, >>, tee) a Bash-en keresztül szigorúan TILOS! Az AI-nak kötelezően a Pipeline Gate-tel védett `write_file_mcp` eszközt kell használnia erre a célra!"
