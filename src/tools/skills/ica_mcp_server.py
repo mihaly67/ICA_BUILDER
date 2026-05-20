@@ -15,6 +15,7 @@ import subprocess
 import requests
 import anyio
 from mcp.server.fastmcp import FastMCP
+from ica_guardrails_mcp import sanitize_bash_command
 
 # Próbáljuk betölteni a környezeti változókat a VPS ~/.env fájljából
 env_file = os.path.expanduser("~/Jules_mx/.env")
@@ -135,6 +136,9 @@ async def execute_bash(command: str) -> str:
          return "Hiba: Veszélyes parancs letiltva a sandboxban."
 
     try:
+        # Regex sanitization to protect host OS from destructive commands
+        safe_command = sanitize_bash_command(command)
+
         import subprocess
         import os
         work_dir = os.path.expanduser("~/Jules_ICA_Builder/")
