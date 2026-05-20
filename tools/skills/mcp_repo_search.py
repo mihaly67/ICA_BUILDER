@@ -15,7 +15,9 @@ def search_repo_labels(query):
     és szemantikus/kulcsszavas keresést hajt végre rajta.
     Így az LLM azonnal látja a sekély előfeldolgozás eredményeit.
     """
-    target_json = "/home/misi/Rag_epites, chatbot_csv_data_llm_RAG/REPO_LABELS.json"
+    target_json = os.environ.get("TARGET_DIR", "/home/misi/Rag_epites, chatbot_csv_data_llm_RAG/")
+    if not target_json.endswith(".json"):
+        target_json = os.path.join(target_json, "REPO_LABELS.json")
 
     # 1. Lekérdezzük a JSON fájlt a VPS-ről 'cat' paranccsal
     cmd = f"cat '{target_json}'"
