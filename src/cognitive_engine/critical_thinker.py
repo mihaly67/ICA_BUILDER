@@ -5,8 +5,16 @@ from register_manager import CognitiveRegister
 def run_critical_analysis():
     # 1. Map (Kontextus felvétele)
     repo_map_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "KOGNITIV_REPO_TERKEP.md")
-    with open(repo_map_path, 'r', encoding='utf-8') as f:
-        repo_map = f.read()
+
+    if os.path.exists(repo_map_path):
+        with open(repo_map_path, 'r', encoding='utf-8') as f:
+            repo_map = f.read()
+    else:
+        # Generáljuk újra, ha nincs meg
+        from repo_mapper import generate_repo_map
+        generate_repo_map(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), repo_map_path)
+        with open(repo_map_path, 'r', encoding='utf-8') as f:
+            repo_map = f.read()
 
     # 2. Register (Állapottartás)
     reg = CognitiveRegister("Onreflexio_Es_Kritika")
