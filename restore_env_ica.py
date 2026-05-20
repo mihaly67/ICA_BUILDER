@@ -11,11 +11,14 @@ import sys
 def install_dependencies():
     print("🔧 ICA Függőségek telepítése...")
     try:
-        subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "mcp", "paramiko", "python-dotenv"], check=True)
-        subprocess.run("sudo apt-get update && sudo apt-get install -y sshpass", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Hozzáadjuk a '--break-system-packages' paramétert ha szükséges újabb pip-nél, vagy sudo-val globálisan.
+        # De biztonságosabb simán az aktuális pyenv / virtualenv pipjét használni:
+        subprocess.run([sys.executable, "-m", "pip", "install", "mcp", "paramiko", "python-dotenv"], check=True)
+        # Az sshpass telepítése az apt-get használatával:
+        subprocess.run("sudo apt-get update && sudo apt-get install -y sshpass", shell=True, check=True)
         print("✅ Függőségek telepítve.")
     except Exception as e:
-        print(f"⚠️ Hiba a függősítésekor: {e}")
+        print(f"⚠️ Hiba a függőségek telepítésekor: {e}")
 
 def check_vps_llama_status():
     """
@@ -49,9 +52,18 @@ def register_rag_environments():
     env_content = "MAIN_RAG_PATH=/home/misi/Rag_epites, chatbot_csv_data_llm_RAG/\n"
     env_content += "DEV_RAG_PATH=/home/misi/BRAIN2_DEV_RAG/\n"
 
-    with open(".env", "a") as f:
-         f.write(env_content)
-    print("✅ RAG útvonalak perzisztens regisztrálása sikeres (.env).")
+    # Hogy ne ismétlődjenek a sorok, ellenőrizzük, megvannak-e már:
+    existing_content = ""
+    if os.path.exists(".env"):
+        with open(".env", "r") as f:
+            existing_content = f.read()
+
+    if "MAIN_RAG_PATH" not in existing_content:
+        with open(".env", "a") as f:
+             f.write(env_content)
+        print("✅ RAG útvonalak perzisztens regisztrálása sikeres (.env).")
+    else:
+        print("✅ RAG útvonalak már regisztrálva vannak.")
 
 def main():
     print("=== 🐝 JULES ICA SYSTEM INITIALIZATION ===")
