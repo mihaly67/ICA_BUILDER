@@ -76,6 +76,9 @@ def main():
     if os.path.exists(memory_manager_path):
         subprocess.run([sys.executable, memory_manager_path, "--action", "start_session"])
 
+        print("\n📖 [AUTO-KONTEXTUS] A korábbi események és memóriák betöltése az új Session-höz:")
+        subprocess.run([sys.executable, memory_manager_path, "--action", "read", "--limit", "3"])
+
     check_vps_llama_status()
     register_rag_environments()
 
