@@ -171,6 +171,47 @@ async def list_files_mcp(directory: str) -> str:
         return f"Hiba olvasáskor: {str(e)}"
 
 @mcp.tool()
+def check_system_health() -> str:
+    """
+    Rendszerfelügyeleti ellenőrzés (Health Check).
+    Megvizsgálja a CPU, RAM állapotát, és hogy futnak-e a szükséges szolgáltatások (Router, Daemon).
+    """
+    try:
+        import psutil
+
+        cpu_percent = psutil.cpu_percent(interval=1)
+        mem = psutil.virtual_memory()
+
+        output = ["🏥 Rendszer Állapot (Health Check)"]
+        output.append(f"CPU Kihasználtság: {cpu_percent}%")
+        output.append(f"RAM Kihasználtság: {mem.percent}% ({mem.available / (1024*1024):.0f} MB szabad)")
+
+        # Szolgáltatások ellenőrzése
+        router_running = False
+        daemon_running = False
+
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                cmdline = proc.info['cmdline']
+                if cmdline:
+                    cmd_str = " ".join(cmdline)
+                    if 'ica_mcp_router.py' in cmd_str:
+                        router_running = True
+                    if 'agent_keepalive.py' in cmd_str:
+                        daemon_running = True
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+
+        output.append(f"🔌 MCP Router (ica_mcp_router.py): {'✅ FUT' if router_running else '❌ LEÁLLT'}")
+        output.append(f"💓 Supervisor Daemon (agent_keepalive.py): {'✅ FUT' if daemon_running else '❌ LEÁLLT'}")
+
+        return "\n".join(output)
+    except ImportError:
+        return "⚠️ Hiba: A 'psutil' csomag hiányzik a Rendszerfelügyelet futtatásához. (pip install psutil)"
+    except Exception as e:
+        return f"❌ Hiba a rendszerfelügyelet futtatásakor: {e}"
+
+@mcp.tool()
 async def read_file_mcp(filepath: str) -> str:
     """Beolvassa egy fájl tartalmát a VPS-ről."""
     target_file = os.path.expanduser(filepath)
