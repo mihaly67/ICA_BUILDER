@@ -17,3 +17,5 @@
 {"timestamp": "2026-05-20T18:14:53.572940", "category": "SESSION_MARKER", "content": "[SESSION_START]"}
 {"timestamp": "2026-05-20T20:44:37.875516", "category": "Context_Summary", "content": "Mem\u00f3ria manager optimaliz\u00e1lva lett, a dinamikus bet\u00f6lt\u00e9s m\u0171k\u00f6dik. C\u00edmk\u00e9z\u00e9si folyamatok futnak a h\u00e1tt\u00e9rben."}
 {"timestamp": "2026-05-20T20:47:00.054437", "category": "Context_Summary", "content": "Tov\u00e1bb finom\u00edtottam a folyamatokat, a Keep Alive teszt fut."}
+{"timestamp": "2026-05-20T21:46:01.577530", "category": "Context_Summary", "content": "MQL5 Theory mappa felt\u00e9rk\u00e9pezve."}
+{"timestamp": "2026-05-20T22:34:12.699200", "category": "TOC_Spark_Deployment", "content": "Elk\u00e9sz\u00fclt az mql5_toc_reader.py szikra script. A mem\u00f3riab\u0151v\u00edt\u00e9s tesztelve."}
