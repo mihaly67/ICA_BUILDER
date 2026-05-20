@@ -106,5 +106,35 @@ def apply_guardrails(generated_code: str, expected_type: str = "python", expecte
     log.append("✅ [GUARDRAILS VALIDÁCIÓ SIKERES] - A kód/adat átment a determinista szűrőn.")
     return "\n".join(log)
 
+def sanitize_bash_command(command: str) -> str:
+    """
+    Biztonságos sandbox hiányában (Ubuntu User Namespace blokkolás miatt)
+    szigorú Regex szűrést alkalmazunk a Bash parancsokra, hogy megvédjük a VPS-t.
+    """
+    import re
+
+    # 1. Tiltott parancsok (rm -rf, sudo, chown, stb.)
+    forbidden_commands = [
+        r'\bsudo\b', r'\bsu\b', r'\bchown\b', r'\bchmod\b',
+        r'\brm\s+-r', r'\brm\s+-f', r'\bmv\s+/.*',
+        r'\bhalt\b', r'\breboot\b', r'\bshutdown\b', r'\binit\b'
+    ]
+
+    for pattern in forbidden_commands:
+        if re.search(pattern, command, re.IGNORECASE):
+            raise ValueError(f"Biztonsági Hiba: A '{pattern}' minta használata szigorúan TILOS a VPS-en!")
+
+    # 2. File redirection és piping blokkolása kritikus fájlokra
+    dangerous_redirects = [
+        r'>\s*/etc', r'>>\s*/etc', r'>\s*/var', r'>>\s*/var',
+        r'>\s*/usr', r'>>\s*/usr', r'>\s*/bin', r'>>\s*/bin'
+    ]
+
+    for pattern in dangerous_redirects:
+        if re.search(pattern, command):
+            raise ValueError(f"Biztonsági Hiba: Rendszerkönyvtárba való írás/átirányítás ('{pattern}') TILOS!")
+
+    return command
+
 if __name__ == "__main__":
     mcp.run()

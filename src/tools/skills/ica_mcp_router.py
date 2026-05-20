@@ -62,6 +62,7 @@ router_mcp.tool()(io_server.search_rag_labels)
 router_mcp.tool()(io_server.read_system_protocols)
 router_mcp.tool()(io_server.get_memory)
 router_mcp.tool()(io_server.write_memory)
+router_mcp.tool()(io_server.check_system_health)
 
 # Guardrails
 router_mcp.tool()(guardrails_server.apply_guardrails)
