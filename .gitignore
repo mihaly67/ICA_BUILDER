@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 Registers/*.json
 temp/
+tools/.agent_heartbeat

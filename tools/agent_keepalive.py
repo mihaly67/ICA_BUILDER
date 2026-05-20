@@ -18,7 +18,7 @@ def run_daemon():
 
     # Próbáljuk megtalálni a memóriafájlt a Knowledge_Base mappában
     base_dir = os.path.dirname(script_dir)
-    memory_file = os.path.join(base_dir, "agent_memory.jsonl")
+    memory_file = os.path.join(base_dir, "Knowledge_Base", "agent_memory.jsonl")
 
     # Mivel egy agent turn kb 2-5 perc, 15-20 perc memóriaírás nélkül már aggasztó
     MEMORY_STALE_WARNING_SECONDS = 20 * 60
