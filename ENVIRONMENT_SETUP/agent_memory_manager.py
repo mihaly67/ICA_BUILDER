@@ -162,6 +162,17 @@ if __name__ == "__main__":
 
     elif args.action == "read":
         entries, exec_time = read_memory(limit=args.limit, category_filter=args.category if args.category != "General" else None)
+
+        # Mivel a session indításakor ezt olvassuk vissza, érdemes az első szűrőt
+        # "Context_Summary"-re tenni, vagy okosan beolvasni, hogy ne csak a markereket
+        # lássa az Agent, hanem az értelmes kontextust is.
+        # De most megtartjuk az univerzális nézetet, viszont jelezzük ha főleg markerek vannak:
+
+        valid_entries = [e for e in entries if e.get('category') != 'SESSION_MARKER']
+        if len(valid_entries) == 0 and len(entries) > 0 and args.limit < 10:
+             # Ha csak markereket talált, olvassunk vissza többet
+             entries, exec_time = read_memory(limit=args.limit + 5, category_filter=args.category if args.category != "General" else None)
+
         print(format_memory_for_agent(entries, exec_time))
 
         # Add a strict protocol reminder for the agent after reading memory
