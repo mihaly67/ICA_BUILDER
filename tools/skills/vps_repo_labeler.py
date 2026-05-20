@@ -8,7 +8,8 @@ import re
 
 # Ez a script KIZÁRÓLAG a VPS-en fut.
 
-TARGET_DIR = "/home/misi/Rag_epites, chatbot_csv_data_llm_RAG/"
+# Dinamikusan vesszük át a környezeti változóból vagy argumentumból, de alapból a MAIN RAG-ra mutat
+TARGET_DIR = os.environ.get("TARGET_DIR", "/home/misi/Rag_epites, chatbot_csv_data_llm_RAG/")
 OUTPUT_JSON = os.path.join(TARGET_DIR, "REPO_LABELS.json")
 MODEL = "llama3:latest"
 
