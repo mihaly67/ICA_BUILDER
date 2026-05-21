@@ -7,7 +7,83 @@ több MCP szervert integrál egybe a tool() metódus dinamikus hívásával.
 import sys
 import os
 import inspect
+
+import time
+import inspect
 from mcp.server.fastmcp import FastMCP
+
+import ica_telemetry
+
+def get_telemetry_wrapper(func):
+    if inspect.iscoroutinefunction(func):
+        async def async_wrapper(*args, **kwargs):
+            start = time.time()
+            try:
+                res = await func(*args, **kwargs)
+                exec_time = (time.time() - start) * 1000
+                ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "success")
+                return res
+            except Exception as e:
+                exec_time = (time.time() - start) * 1000
+                ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "error", str(e))
+                raise e
+        # Meg kell tartanunk az eredeti nevét és docstring-jét a FastMCP reflexióhoz
+        async_wrapper.__name__ = func.__name__
+        async_wrapper.__doc__ = func.__doc__
+        async_wrapper.__annotations__ = getattr(func, '__annotations__', {})
+        # Opcionálisan: a signature-t is meg kéne tartani, de az egyszerűség kedvéért
+        # a FastMCP az annotations-ből dolgozik.
+        return async_wrapper
+    else:
+        def sync_wrapper(*args, **kwargs):
+            start = time.time()
+            try:
+                res = func(*args, **kwargs)
+                exec_time = (time.time() - start) * 1000
+                ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "success")
+                return res
+            except Exception as e:
+                exec_time = (time.time() - start) * 1000
+                ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "error", str(e))
+                raise e
+        sync_wrapper.__name__ = func.__name__
+        sync_wrapper.__doc__ = func.__doc__
+        sync_wrapper.__annotations__ = getattr(func, '__annotations__', {})
+        return sync_wrapper
+
+def add_tool_with_telemetry(func):
+    # Ezzel elkerüljük az async paraméter-vizsgálat (signature) problémákat,
+    # de egyelőre a legegyszerűbb, ha beállítjuk a wrapperre az eredeti signaturat
+    import functools
+    @functools.wraps(func)
+    async def async_wrapped(*args, **kwargs):
+        start = time.time()
+        try:
+            res = await func(*args, **kwargs)
+            exec_time = (time.time() - start) * 1000
+            ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "success")
+            return res
+        except Exception as e:
+            exec_time = (time.time() - start) * 1000
+            ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "error", str(e))
+            raise e
+
+    @functools.wraps(func)
+    def sync_wrapped(*args, **kwargs):
+        start = time.time()
+        try:
+            res = func(*args, **kwargs)
+            exec_time = (time.time() - start) * 1000
+            ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "success")
+            return res
+        except Exception as e:
+            exec_time = (time.time() - start) * 1000
+            ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "error", str(e))
+            raise e
+
+    wrapped = async_wrapped if inspect.iscoroutinefunction(func) else sync_wrapped
+    router_mcp.tool()(wrapped)
+
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
@@ -59,48 +135,48 @@ A 4-Lépcsős 'Tervezz, mielőtt kódolsz' Protokoll:
 """
 
 router_mcp = FastMCP("Jules-ICA-MCP-Router", instructions=system_instructions)
-router_mcp.tool()(memory_server.generate_core_memory_overview)
+add_tool_with_telemetry(memory_server.generate_core_memory_overview)
 
 
 
 # Biztonságos iteráció a FastMCP dokumentált belső API-ja nélkül (manuális újracsatolás)
-router_mcp.tool()(io_server.execute_bash)
-router_mcp.tool()(io_server.list_files_mcp)
-router_mcp.tool()(io_server.read_file_mcp)
-router_mcp.tool()(io_server.git_commit_and_push)
-router_mcp.tool()(io_server.write_file_mcp)
-router_mcp.tool()(io_server.fetch_webpage_mcp)
-router_mcp.tool()(io_server.send_agent_message)
-router_mcp.tool()(io_server.check_agent_messages)
-router_mcp.tool()(io_server.create_swarm_job)
-router_mcp.tool()(io_server.get_next_swarm_job)
-router_mcp.tool()(io_server.complete_swarm_job)
-router_mcp.tool()(io_server.github_list_user_repos)
-router_mcp.tool()(io_server.github_search_repos)
-router_mcp.tool()(io_server.github_read_file)
-router_mcp.tool()(io_server.execute_python)
-router_mcp.tool()(io_server.search_rag_database)
-router_mcp.tool()(io_server.send_message_to_jules_inbox)
-router_mcp.tool()(io_server.read_memory_register)
-router_mcp.tool()(io_server.write_memory_register)
-router_mcp.tool()(io_server.create_full_backup)
-router_mcp.tool()(io_server.search_rag_labels)
-router_mcp.tool()(io_server.read_system_protocols)
-router_mcp.tool()(io_server.get_memory)
+add_tool_with_telemetry(io_server.execute_bash)
+add_tool_with_telemetry(io_server.list_files_mcp)
+add_tool_with_telemetry(io_server.read_file_mcp)
+add_tool_with_telemetry(io_server.git_commit_and_push)
+add_tool_with_telemetry(io_server.write_file_mcp)
+add_tool_with_telemetry(io_server.fetch_webpage_mcp)
+add_tool_with_telemetry(io_server.send_agent_message)
+add_tool_with_telemetry(io_server.check_agent_messages)
+add_tool_with_telemetry(io_server.create_swarm_job)
+add_tool_with_telemetry(io_server.get_next_swarm_job)
+add_tool_with_telemetry(io_server.complete_swarm_job)
+add_tool_with_telemetry(io_server.github_list_user_repos)
+add_tool_with_telemetry(io_server.github_search_repos)
+add_tool_with_telemetry(io_server.github_read_file)
+add_tool_with_telemetry(io_server.execute_python)
+add_tool_with_telemetry(io_server.search_rag_database)
+add_tool_with_telemetry(io_server.send_message_to_jules_inbox)
+add_tool_with_telemetry(io_server.read_memory_register)
+add_tool_with_telemetry(io_server.write_memory_register)
+add_tool_with_telemetry(io_server.create_full_backup)
+add_tool_with_telemetry(io_server.search_rag_labels)
+add_tool_with_telemetry(io_server.read_system_protocols)
+add_tool_with_telemetry(io_server.get_memory)
 
-router_mcp.tool()(io_server.write_memory)
-router_mcp.tool()(io_server.deep_planning)
+add_tool_with_telemetry(io_server.write_memory)
+add_tool_with_telemetry(io_server.deep_planning)
 
 
 # Guardrails
-router_mcp.tool()(guardrails_server.apply_guardrails)
+add_tool_with_telemetry(guardrails_server.apply_guardrails)
 
 # Memory
-router_mcp.tool()(memory_server.add_memory_node)
-router_mcp.tool()(memory_server.add_memory_edge)
-router_mcp.tool()(memory_server.query_graph_context)
-router_mcp.tool()(memory_server.search_graph_fts)
-router_mcp.tool()(memory_server.search_graph_semantic)
+add_tool_with_telemetry(memory_server.add_memory_node)
+add_tool_with_telemetry(memory_server.add_memory_edge)
+add_tool_with_telemetry(memory_server.query_graph_context)
+add_tool_with_telemetry(memory_server.search_graph_fts)
+add_tool_with_telemetry(memory_server.search_graph_semantic)
 
 
 

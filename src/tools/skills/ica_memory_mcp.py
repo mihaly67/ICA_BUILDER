@@ -30,22 +30,23 @@ def init_graph_db():
 
 @mcp.tool()
 def add_memory_node(name: str, entity_type: str, description: str) -> str:
-    """
-    Hozzáad egy Entitást (Csomópontot) a Tudásgráfhoz.
-    Pl: name="ica_mcp_router.py", type="File", description="Központi MCP gateway."
-    """
     init_graph_db()
     try:
         conn = sqlite3.connect(GRAPH_DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("INSERT OR REPLACE INTO entities (name, type, description) VALUES (?, ?, ?)",
-                       (name, entity_type, description))
+        cursor.execute("INSERT OR REPLACE INTO entities (name, type, description) VALUES (?, ?, ?)", (name, entity_type, description))
+        node_id = cursor.lastrowid
         conn.commit()
         conn.close()
+
+        try:
+            get_faiss_mem().add_node(node_id, name, description)
+        except Exception as fe:
+            pass
+
         return f"✅ Entitás '{name}' ({entity_type}) sikeresen a Gráfba mentve."
     except Exception as e:
-        return f"Hiba az entitás mentésekor: {e}"
-
+        return f"Hiba a node mentésekor: {e}"
 @mcp.tool()
 def add_memory_edge(source_name: str, target_name: str, relationship: str) -> str:
     """
@@ -180,17 +181,24 @@ def generate_core_memory_overview() -> str:
 if __name__ == "__main__":
     mcp.run()
 
+
+import ica_faiss_memory
+global_faiss_mem = None
+
+def get_faiss_mem():
+    global global_faiss_mem
+    if global_faiss_mem is None:
+        global_faiss_mem = ica_faiss_memory.FAISSGraphMemory()
+    return global_faiss_mem
+
 @mcp.tool()
 def search_graph_semantic(query: str, limit: int = 5) -> str:
     try:
-        import ica_faiss_memory
-        faiss_mem = ica_faiss_memory.FAISSGraphMemory()
-        results = faiss_mem.search(query, top_k=limit)
+        results = get_faiss_mem().search(query, top_k=limit)
         import json
         return json.dumps(results)
     except Exception as e:
         return f"Hiba a FAISS keresés során: {e}"
-
 @mcp.tool()
 def search_graph_fts(query: str, limit: int = 5) -> str:
     try:

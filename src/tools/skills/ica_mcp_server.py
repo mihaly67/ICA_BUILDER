@@ -118,8 +118,7 @@ def search_rag_labels(query: str) -> str:
 
 # --- ALAPVETŐ RENDSZER ESZKÖZÖK ---
 
-@mcp.tool()
-async def sanitize_bash_command(cmd: str) -> bool:
+def sanitize_bash_command(cmd: str) -> bool:
     forbidden = ['>', '>>', 'tee', '|']
     for f in forbidden:
         if f in cmd:
@@ -128,16 +127,9 @@ async def sanitize_bash_command(cmd: str) -> bool:
 
 @mcp.tool()
 def execute_bash(command: str) -> str:
-    """
-    Futtat egy bash parancsot a VPS-en.
-    PIPELINE GATE: Fájlba írás (>, >>, tee) SZIGORÚAN TILOS a kódgenerálási gát megkerülése miatt!
-    Használd a write_file_mcp eszközt!
-    """
-    import re
-    blocked_patterns = [r'(?<!2)>', r'>>', r'\\btee\\b']
-    for pattern in blocked_patterns:
-        if re.search(pattern, command):
-            return f"🚨 BLOKKOLVA [BASH GUARDRAIL]: Fájlba írás vagy fájl-átirányítás (>, >>, tee) a Bash-en keresztül szigorúan TILOS! Az AI-nak kötelezően a Pipeline Gate-tel védett `write_file_mcp` eszközt kell használnia erre a célra!"
+    if not sanitize_bash_command(command):
+        return f"🚨 BLOKKOLVA [BASH GUARDRAIL]: Fájlba írás vagy fájl-átirányítás (>, >>, tee) a Bash-en keresztül szigorúan TILOS! Az AI-nak kötelezően a Pipeline Gate-tel védett  eszközt kell használnia erre a célra!"
+
 
     if "rm -rf /" in command or "mkfs" in command:
          return "Hiba: Veszélyes parancs letiltva a sandboxban."
@@ -607,6 +599,8 @@ async def github_read_file(owner: str, repo: str, file_path: str, branch: str = 
 
 
 
+
+
 @mcp.tool()
 async def execute_python(code: str) -> str:
     import os
@@ -624,13 +618,9 @@ async def execute_python(code: str) -> str:
             "/home/misi/Jules_mx/venv/bin/python3", temp_file
         ]
         result = subprocess.run(bwrap_cmd, capture_output=True, text=True, timeout=30)
-        return f"Kimenet:
-{result.stdout}
-
-Hibák:
-{result.stderr}" if result.stderr else result.stdout
+        return "Kimenet:\n" + str(result.stdout) + "\n\nHibák:\n" + str(result.stderr)
     except Exception as e:
-        return f"Kritikus hiba a futtatás során: {e}"
+        return "Kritikus hiba a futtatás során: " + str(e)
 @mcp.tool()
 async def search_rag_database(rag_name: str, keyword: str, limit: int = 3) -> str:
     """
@@ -807,6 +797,16 @@ async def create_full_backup() -> str:
     except subprocess.CalledProcessError as e:
         return f"Hiba a mentés során: {e.stderr}"
 
+
+@mcp.tool()
+async def check_system_health() -> str:
+    import subprocess
+    try:
+        mem = subprocess.run(["free", "-h"], capture_output=True, text=True).stdout
+        cpu = subprocess.run(["top", "-bn1"], capture_output=True, text=True).stdout.split('\n')[2]
+        return f"Memória:\n{mem}\nCPU:\n{cpu}"
+    except Exception as e:
+        return f"Health check hiba: {e}"
 
 @mcp.tool()
 async def deep_planning(initial_state: str, max_iterations: int = 5) -> str:
