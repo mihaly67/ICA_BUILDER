@@ -873,7 +873,32 @@ async def create_full_backup() -> str:
     except subprocess.CalledProcessError as e:
         return f"Hiba a mentés során: {e.stderr}"
 
+
+@mcp.tool()
+async def deep_planning(initial_state: str, max_iterations: int = 5) -> str:
+    """
+    System 2 (Foresight) tervezés az MCTS (Monte Carlo Tree Search) alapján.
+    Feltérképezi a problématereket a memóriagráffal párhuzamosan.
+    """
+    try:
+        import ica_mcts_planner
+        planner = ica_mcts_planner.MCTSPlanner(max_iterations=max_iterations)
+
+        # Egyszerű teszt generátor és értékelő (Dummy a teljes implementáció előtt)
+        def gen_func(state):
+            return [f"{state} -> Step A", f"{state} -> Step B", f"{state} -> Step C"]
+
+        def eval_func(state):
+            import random
+            return random.uniform(0, 1)
+
+        best_path = planner.search(initial_state, gen_func, eval_func)
+        return json.dumps({"status": "success", "best_predicted_path": best_path})
+    except Exception as e:
+        return f"Hiba az MCTS tervezés során: {e}"
+
 def main():
+
     """Futtatja a szervert stdio módban."""
     print("🚀 Jules VPS MCP Szerver elindítva (stdio módban).", file=sys.stderr)
     mcp.run()
