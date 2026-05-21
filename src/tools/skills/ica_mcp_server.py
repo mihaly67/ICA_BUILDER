@@ -118,18 +118,22 @@ def search_rag_labels(query: str) -> str:
 
 # --- ALAPVETŐ RENDSZER ESZKÖZÖK ---
 
-def sanitize_bash_command(cmd: str) -> bool:
-    forbidden = ['>', '>>', 'tee']
-    for f in forbidden:
-        if f in cmd:
-            return False
-    return True
+
+
+
+
+
+
+
+
+
 
 @mcp.tool()
 def execute_bash(command: str) -> str:
-    if not sanitize_bash_command(command):
-        return f"🚨 BLOKKOLVA [BASH GUARDRAIL]: Fájlba írás vagy fájl-átirányítás (>, >>, tee) a Bash-en keresztül szigorúan TILOS! Az AI-nak kötelezően a Pipeline Gate-tel védett  eszközt kell használnia erre a célra!"
-
+    forbidden = ['>', '>>', 'tee']
+    for f in forbidden:
+        if f in command:
+            return "🚨 BLOKKOLVA [BASH GUARDRAIL]: Fájlba írás vagy fájl-átirányítás (>, >>, tee) a Bash-en keresztül szigorúan TILOS! Az AI-nak kötelezően a Pipeline Gate-tel védett write_file_mcp eszközt kell használnia erre a célra! Eredeti parancs: " + command
 
     if "rm -rf /" in command or "mkfs" in command:
          return "Hiba: Veszélyes parancs letiltva a sandboxban."
@@ -143,17 +147,9 @@ def execute_bash(command: str) -> str:
              return "🚨 BLOKKOLVA [BASH GUARDRAIL]: Tilos a RAG adatbázis törlése!"
 
         result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=work_dir)
-        return f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        return "STDOUT:\n" + str(result.stdout) + "\nSTDERR:\n" + str(result.stderr)
     except subprocess.CalledProcessError as e:
-        return f"Hiba a Bash futtatásakor (Kód: {e.returncode}):\nSTDOUT: {e.stdout}\nSTDERR: {e.stderr}"
-
-
-
-
-
-
-
-
+        return "Hiba a Bash futtatásakor (Kód: " + str(e.returncode) + "):\nSTDOUT: " + str(e.stdout) + "\nSTDERR: " + str(e.stderr)
 @mcp.tool()
 async def list_files_mcp(directory: str) -> str:
     """Kilistázza a VPS-en lévő fájlokat egy adott könyvtárban."""
@@ -621,113 +617,70 @@ async def execute_python(code: str) -> str:
             "/home/misi/Jules_mx/venv/bin/python3", temp_file
         ]
         result = subprocess.run(bwrap_cmd, capture_output=True, text=True, timeout=30)
-        return "Kimenet:\n" + str(result.stdout) + "\n\nHibák:\n" + str(result.stderr)
+        return "Kimenet:\n\n\nHibák:\n" + str(result.stderr)
     except Exception as e:
         return "Kritikus hiba a futtatás során: " + str(e)
 @mcp.tool()
 async def search_rag_database(rag_name: str, keyword: str, limit: int = 3) -> str:
-    """
-    Keresés a VPS-en lévő specifikus lokális RAG SQLite adatbázisokban (Chunk-ok és forrás fájlok alapján).
-    Bővítve a megfelelő .db fájlokhoz.
-    """
-    db_paths = {
-        "Chatbot": "/home/misi/Rag_epites, chatbot_csv_data_llm_RAG/RAG_CHATBOT_CSV_DATA_LLM_github.db",
-        "BRAIN2": "/home/misi/BRAIN2_DEV_RAG/brain2_dev_knowledge.db",
-        "Gerilla": "/home/misi/Gerilla_RAG/GERILLA_RAG_knowledge.db",
-        "MX_Linux": "/home/misi/MX_LINUX_RAG/MX_LINUX_knowledge.db",
-        "MQL5_Articles": "/home/misi/MQL5 MAP/RAG_MQL5_ARTICLES_github.db",
-        "MQL5_Theory": "/home/misi/MQL5_Theory/RAG_MQL5_THEORY_knowledge.db",
-        "Jules_ICA_Builder": "/home/misi/Jules_ICA_Builder/agent_memory.jsonl"
-    }
+    global RAG_DATABASES
 
-    if rag_name not in db_paths:
-        return f"Hiba: Ismeretlen RAG adatbázis. Elérhetőek: {', '.join(db_paths.keys())}"
+    if rag_name not in RAG_DATABASES:
+        return f"Hiba: Ismeretlen RAG adatbázis. Elérhetőek: {', '.join(RAG_DATABASES.keys())}"
 
-    db_path = db_paths[rag_name]
+    db_path = RAG_DATABASES[rag_name]
     if not os.path.exists(db_path):
         return f"Hiba: Az adatbázis fájl nem található a VPS-en: {db_path}"
 
     if db_path.endswith('.jsonl'):
         try:
-             results = []
-             with open(db_path, 'r', encoding='utf-8') as f:
-                 for line in f:
-                     if keyword.lower() in line.lower():
-                         results.append(line)
-             if not results:
-                 return f"Nincs találat a '{keyword}' szóra a {rag_name} jsonl-ben."
-             return "\n".join(results[-limit:])
+            with open(db_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            results = []
+            for line in reversed(lines):
+                if keyword.lower() in line.lower():
+                    results.append(line)
+                    if len(results) >= limit:
+                        break
+            if not results:
+                return f"Nincs találat a '{keyword}' szóra a {rag_name} memóriában."
+            return f"🔍 Találatok a(z) {rag_name} memóriában:\n" + "\n".join(results)
         except Exception as e:
-             return f"Hiba a jsonl keresés során: {str(e)}"
+            return f"Hiba a JSONL olvasásakor: {e}"
 
     try:
         import sqlite3
         conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
+        c = conn.cursor()
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='chunks' OR name='documents' OR name='rag_data')")
+        tables = [row[0] for row in c.fetchall()]
 
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tables = [row[0] for row in cursor.fetchall()]
+        if not tables:
+            return "Hiba: Nem található megfelelő tábla az adatbázisban."
 
-        results = []
-        if 'chunks' in tables and 'files' in tables:
-            query = """
-                SELECT f.repo_name, f.file_path, c.content
-                FROM chunks c
-                JOIN files f ON c.file_id = f.id
-                WHERE c.content LIKE ?
-                LIMIT ?
-            """
-            cursor.execute(query, (f'%{keyword}%', limit))
-            results = cursor.fetchall()
-        elif 'documents' in tables:
-            query = """
-                SELECT id, source, content
-                FROM documents
-                WHERE content LIKE ?
-                LIMIT ?
-            """
-            cursor.execute(query, (f'%{keyword}%', limit))
-            results = cursor.fetchall()
-        elif 'rag_data' in tables:
-            query = """
-                SELECT 'unknown_repo', filepath, content
-                FROM rag_data
-                WHERE content LIKE ?
-                LIMIT ?
-            """
-            cursor.execute(query, (f'%{keyword}%', limit))
-            results = cursor.fetchall()
+        table = tables[0]
+        try:
+            c.execute(f"SELECT source, content FROM {table} WHERE content LIKE ? LIMIT ?", (f'%{keyword}%', limit))
+        except:
+            try:
+                c.execute(f"SELECT filepath, content FROM {table} WHERE content LIKE ? LIMIT ?", (f'%{keyword}%', limit))
+            except:
+                 c.execute(f"SELECT * FROM {table} LIMIT ?", (limit,))
 
+        results = c.fetchall()
         conn.close()
 
         if not results:
             return f"Nincs találat a '{keyword}' kulcsszóra a {rag_name} RAG-ban."
 
         output = f"🔍 Találatok a(z) {rag_name} adatbázisban a '{keyword}' szóra:\n\n"
-        for idx, row in enumerate(results, 1):
-            output += f"--- Találat {idx} ---\n"
-            if len(row) == 3:
-                repo, file_path, content = row
-                output += f"📁 Repo/Id: {repo}\n"
-                output += f"📄 Fájl/Source: {file_path}\n"
-                output += f"📝 Tartalom részlet: {content[:500]}...\n\n"
+        for i, row in enumerate(results, 1):
+            source = str(row[0])
+            content_snippet = str(row[1])[:300] + "..." if len(row) > 1 else str(row)
+            output += f"--- Találat {i} ---\n📁 Forrás: {source}\n📝 Tartalom: {content_snippet}\n\n"
 
         return output
-
     except Exception as e:
-        return f"Hiba az adatbázis keresés során: {str(e)}"
-
-
-# --- HIERARCHIKUS MEMÓRIA REGISZTER (CORE MEMORY / CONTEXT) ---
-
-MEMORY_REGISTER_FILE = os.path.expanduser("~/Jules_mx/temp/mcp_memory_register.json")
-
-def init_memory_register():
-    if not os.path.exists(MEMORY_REGISTER_FILE):
-        with open(MEMORY_REGISTER_FILE, "w", encoding="utf-8") as f:
-            json.dump({"Core": {}, "Archival_Pointers": []}, f)
-
-
+        return f"Hiba a RAG keresés során: {e}"
 @mcp.tool()
 async def send_message_to_jules_inbox(sender_name: str, message: str) -> str:
     """(ÚJ) Ezzel az eszközzel a Cline (vagy bármely AI) szöveges kérdést, üzenetet hagyhat a VPS-en Jules_mx számára."""
