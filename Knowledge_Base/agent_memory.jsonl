@@ -19,3 +19,5 @@
 {"timestamp": "2026-05-20T20:47:00.054437", "category": "Context_Summary", "content": "Tov\u00e1bb finom\u00edtottam a folyamatokat, a Keep Alive teszt fut."}
 {"timestamp": "2026-05-20T21:46:01.577530", "category": "Context_Summary", "content": "MQL5 Theory mappa felt\u00e9rk\u00e9pezve."}
 {"timestamp": "2026-05-20T22:34:12.699200", "category": "TOC_Spark_Deployment", "content": "Elk\u00e9sz\u00fclt az mql5_toc_reader.py szikra script. A mem\u00f3riab\u0151v\u00edt\u00e9s tesztelve."}
+{"timestamp": "2026-05-21T04:45:55.891517", "category": "Context_Summary", "content": "Elind\u00edtottam a RAG repo c\u00edmk\u00e9z\u00e9seket a Swat4 rep\u00f3kra."}
+{"timestamp": "2026-05-21T05:00:36.622803", "category": "Context_Summary", "content": "A Swat4 repos k\u00f6nyvt\u00e1rak (Black_Ops, ML_Ops, Colombo, Thief) c\u00edmk\u00e9z\u00e9se is elind\u00edtva a h\u00e1tt\u00e9rben."}
