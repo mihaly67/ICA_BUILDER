@@ -21,3 +21,6 @@
 {"timestamp": "2026-05-20T22:34:12.699200", "category": "TOC_Spark_Deployment", "content": "Elk\u00e9sz\u00fclt az mql5_toc_reader.py szikra script. A mem\u00f3riab\u0151v\u00edt\u00e9s tesztelve."}
 {"timestamp": "2026-05-21T04:45:55.891517", "category": "Context_Summary", "content": "Elind\u00edtottam a RAG repo c\u00edmk\u00e9z\u00e9seket a Swat4 rep\u00f3kra."}
 {"timestamp": "2026-05-21T05:00:36.622803", "category": "Context_Summary", "content": "A Swat4 repos k\u00f6nyvt\u00e1rak (Black_Ops, ML_Ops, Colombo, Thief) c\u00edmk\u00e9z\u00e9se is elind\u00edtva a h\u00e1tt\u00e9rben."}
+{"timestamp": "2026-05-21T09:27:40.743071", "category": "SESSION_MARKER", "content": "[SESSION_START]"}
+{"timestamp": "2026-05-21T09:39:54.159155", "category": "SESSION_MARKER", "content": "[SESSION_START]"}
+{"timestamp": "2026-05-21T10:05:53.397659", "category": "Context_Summary", "content": "Lel\u0151ttem az \u00f6sszes vps_repo_labeler.py folyamatot a VPS-en (5.189.163.88), mert extr\u00e9m t\u00falterhelts\u00e9get okoztak \u00e9s emiatt MCP timeoutok jelentkeztek. A szerver terhel\u00e9se normaliz\u00e1l\u00f3dott."}
