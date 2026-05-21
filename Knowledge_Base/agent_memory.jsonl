@@ -21,3 +21,7 @@
 {"timestamp": "2026-05-20T22:34:12.699200", "category": "TOC_Spark_Deployment", "content": "Elk\u00e9sz\u00fclt az mql5_toc_reader.py szikra script. A mem\u00f3riab\u0151v\u00edt\u00e9s tesztelve."}
 {"timestamp": "2026-05-21T04:45:55.891517", "category": "Context_Summary", "content": "Elind\u00edtottam a RAG repo c\u00edmk\u00e9z\u00e9seket a Swat4 rep\u00f3kra."}
 {"timestamp": "2026-05-21T05:00:36.622803", "category": "Context_Summary", "content": "A Swat4 repos k\u00f6nyvt\u00e1rak (Black_Ops, ML_Ops, Colombo, Thief) c\u00edmk\u00e9z\u00e9se is elind\u00edtva a h\u00e1tt\u00e9rben."}
+{"timestamp": "2026-05-21T05:22:46.630802", "category": "Context_Summary", "content": "Elv\u00e9geztem a TOC szkript dinamiz\u00e1l\u00e1s\u00e1t is, RAG keres\u00e9sek fel vannak k\u00e9sz\u00edtve b\u00e1rmelyik adatb\u00e1zis beolvas\u00e1s\u00e1ra. Jelentem a felhaszn\u00e1l\u00f3nak."}
+{"timestamp": "2026-05-21T05:48:28.013117", "category": "Context_Summary", "content": "MQL5 k\u00f6nyvek felt\u00e9rk\u00e9pezve."}
+{"timestamp": "2026-05-21T06:14:17.382383", "category": "Context_Summary", "content": "Elk\u00e9sz\u00fclt az MQL5 Articles adatb\u00e1zis s\u00e9ma elemz\u00e9se \u00e9s tervezem a c\u00edmk\u00e9z\u0151 modult."}
+{"timestamp": "2026-05-21T06:37:15.578978", "category": "Context_Summary", "content": "Sikeresen meg\u00edrtam \u00e9s felt\u00f6lt\u00f6ttem az MQL5 specifikus c\u00edmk\u00e9z\u0151 scriptet, mely kinyeri a TOC \u00e9s k\u00f3d r\u00e9szleteket."}
