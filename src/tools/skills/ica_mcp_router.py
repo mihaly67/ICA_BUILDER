@@ -14,42 +14,7 @@ from mcp.server.fastmcp import FastMCP
 
 import ica_telemetry
 
-def get_telemetry_wrapper(func):
-    if inspect.iscoroutinefunction(func):
-        async def async_wrapper(*args, **kwargs):
-            start = time.time()
-            try:
-                res = await func(*args, **kwargs)
-                exec_time = (time.time() - start) * 1000
-                ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "success")
-                return res
-            except Exception as e:
-                exec_time = (time.time() - start) * 1000
-                ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "error", str(e))
-                raise e
-        # Meg kell tartanunk az eredeti nevét és docstring-jét a FastMCP reflexióhoz
-        async_wrapper.__name__ = func.__name__
-        async_wrapper.__doc__ = func.__doc__
-        async_wrapper.__annotations__ = getattr(func, '__annotations__', {})
-        # Opcionálisan: a signature-t is meg kéne tartani, de az egyszerűség kedvéért
-        # a FastMCP az annotations-ből dolgozik.
-        return async_wrapper
-    else:
-        def sync_wrapper(*args, **kwargs):
-            start = time.time()
-            try:
-                res = func(*args, **kwargs)
-                exec_time = (time.time() - start) * 1000
-                ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "success")
-                return res
-            except Exception as e:
-                exec_time = (time.time() - start) * 1000
-                ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "error", str(e))
-                raise e
-        sync_wrapper.__name__ = func.__name__
-        sync_wrapper.__doc__ = func.__doc__
-        sync_wrapper.__annotations__ = getattr(func, '__annotations__', {})
-        return sync_wrapper
+
 
 def add_tool_with_telemetry(func):
     # Ezzel elkerüljük az async paraméter-vizsgálat (signature) problémákat,
@@ -166,6 +131,7 @@ add_tool_with_telemetry(io_server.get_memory)
 
 add_tool_with_telemetry(io_server.write_memory)
 add_tool_with_telemetry(io_server.deep_planning)
+add_tool_with_telemetry(io_server.check_system_health)
 
 
 # Guardrails
