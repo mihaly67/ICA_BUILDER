@@ -8,6 +8,7 @@ from rich.layout import Layout
 from rich.live import Live
 from rich.align import Align
 import json
+import re
 
 DB_PATH = "/home/misi/Jules_ICA_Builder/mcp_telemetry.db"
 MEMORY_PATH = "/home/misi/Jules_ICA_Builder/agent_memory.jsonl"
@@ -75,7 +76,7 @@ def make_telemetry_table():
 
 
     for row in logs:
-        ts_str = time.strftime('%H:%M:%S', time.localtime(row[0]))
+        ts_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(row[0]))
         tool_name = row[1]
         args_json = row[2]
         exec_time = row[3]
