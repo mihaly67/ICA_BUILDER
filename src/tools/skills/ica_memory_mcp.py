@@ -15,35 +15,18 @@ mcp = FastMCP("Jules-Memory-Graph-Module")
 GRAPH_DB_PATH = os.path.expanduser("~/Jules_ICA_Builder/ica_knowledge_graph.db")
 
 def init_graph_db():
-    """Létrehozza a gráf adatbázis tábláit, ha nem léteznek."""
     os.makedirs(os.path.dirname(GRAPH_DB_PATH), exist_ok=True)
     conn = sqlite3.connect(GRAPH_DB_PATH)
     cursor = conn.cursor()
-
-    # Entitások (Csomópontok / Nodes)
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS entities (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL,
-            type TEXT NOT NULL,
-            description TEXT
-        )
-    ''')
-
-    # Kapcsolatok (Élek / Edges)
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS edges (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source_id INTEGER NOT NULL,
-            target_id INTEGER NOT NULL,
-            relationship TEXT NOT NULL,
-            FOREIGN KEY (source_id) REFERENCES entities(id),
-            FOREIGN KEY (target_id) REFERENCES entities(id),
-            UNIQUE(source_id, target_id, relationship)
-        )
-    ''')
+    cursor.execute('CREATE TABLE IF NOT EXISTS entities (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL, type TEXT NOT NULL, description TEXT)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS edges (id INTEGER PRIMARY KEY AUTOINCREMENT, source_id INTEGER NOT NULL, target_id INTEGER NOT NULL, relationship TEXT NOT NULL, FOREIGN KEY (source_id) REFERENCES entities(id), FOREIGN KEY (target_id) REFERENCES entities(id), UNIQUE(source_id, target_id, relationship))')
+    cursor.execute("CREATE VIRTUAL TABLE IF NOT EXISTS entities_fts USING fts5(id UNINDEXED, name, description, content='entities', content_rowid='id');")
+    cursor.execute("CREATE TRIGGER IF NOT EXISTS entities_ai AFTER INSERT ON entities BEGIN INSERT INTO entities_fts(rowid, name, description) VALUES (new.id, new.name, new.description); END;")
+    cursor.execute("CREATE TRIGGER IF NOT EXISTS entities_ad AFTER DELETE ON entities BEGIN INSERT INTO entities_fts(entities_fts, rowid, name, description) VALUES('delete', old.id, old.name, old.description); END;")
+    cursor.execute("CREATE TRIGGER IF NOT EXISTS entities_au AFTER UPDATE ON entities BEGIN INSERT INTO entities_fts(entities_fts, rowid, name, description) VALUES('delete', old.id, old.name, old.description); INSERT INTO entities_fts(rowid, name, description) VALUES (new.id, new.name, new.description); END;")
     conn.commit()
     conn.close()
+
 
 @mcp.tool()
 def add_memory_node(name: str, entity_type: str, description: str) -> str:
@@ -140,5 +123,83 @@ def query_graph_context(topic_name: str) -> str:
     except Exception as e:
         return f"Hiba a lekérdezéskor: {e}"
 
+
+@mcp.tool()
+def generate_core_memory_overview() -> str:
+    """
+    A MemGPT logikája alapján legenerál egy Core Memory kivonatot a JSONL és a GraphRAG alapján.
+    Ezt a router automatikusan injektálja az AI System Promptjába, elkerülve a végtelen chat historyt.
+    """
+    import os
+
+    output = ["--- ICA CORE MEMORY (WORKING CONTEXT) ---"]
+
+    # 1. GraphRAG összefoglaló (Aktív csomópontok)
+    init_graph_db()
+    try:
+        conn = sqlite3.connect(GRAPH_DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT name, type FROM entities ORDER BY id DESC LIMIT 5")
+        recent_nodes = cursor.fetchall()
+        conn.close()
+
+        output.append("📌 Legutóbb használt Architektúra Elemek (Graph Nodes):")
+        if recent_nodes:
+            for name, e_type in recent_nodes:
+                output.append(f"  - [{name}] ({e_type})")
+        else:
+            output.append("  (A gráf még üres)")
+    except Exception as e:
+         output.append(f"⚠️ Hiba a gráf olvasásakor: {e}")
+
+    # 2. Archival Memory (JSONL) Pointers
+    target_dir = "/home/misi/Jules_ICA_Builder"
+    memory_file = os.path.join(target_dir, "agent_memory.jsonl")
+
+    output.append("\n🧠 Hosszútávú Memória Mutatók (Archival Memory):")
+    if os.path.exists(memory_file):
+        try:
+            with open(memory_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                total_memories = len(lines)
+                output.append(f"  Összes memória bejegyzés: {total_memories} db. (Ha részletek kellenek, használd a `get_memory` eszközt!)")
+
+                # Csak az utolsó 1 bejegyzés címét mutatjuk
+                if total_memories > 0:
+                    import json
+                    last_obj = json.loads(lines[-1])
+                    output.append(f"  Legutóbbi bejegyzés témája: {last_obj.get('category', 'Ismeretlen')} ({last_obj.get('timestamp', '')})")
+        except Exception as e:
+            output.append(f"⚠️ Hiba a JSONL olvasásakor: {e}")
+    else:
+        output.append("  (A jsonl memória még üres)")
+
+    output.append("-------------------------------------------")
+    return "\n".join(output)
+
 if __name__ == "__main__":
     mcp.run()
+
+@mcp.tool()
+def search_graph_semantic(query: str, limit: int = 5) -> str:
+    try:
+        import ica_faiss_memory
+        faiss_mem = ica_faiss_memory.FAISSGraphMemory()
+        results = faiss_mem.search(query, top_k=limit)
+        import json
+        return json.dumps(results)
+    except Exception as e:
+        return f"Hiba a FAISS keresés során: {e}"
+
+@mcp.tool()
+def search_graph_fts(query: str, limit: int = 5) -> str:
+    try:
+        conn = sqlite3.connect('/home/misi/Jules_ICA_Builder/ica_knowledge_graph.db')
+        c = conn.cursor()
+        c.execute("SELECT name, description FROM entities_fts WHERE entities_fts MATCH ? ORDER BY rank LIMIT ?", (query, limit))
+        results = c.fetchall()
+        conn.close()
+        import json
+        return json.dumps([{"name": r[0], "description": r[1]} for r in results])
+    except Exception as e:
+        return f"Hiba az FTS5 keresés során: {e}"

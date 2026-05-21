@@ -15,7 +15,6 @@ import subprocess
 import requests
 import anyio
 from mcp.server.fastmcp import FastMCP
-from ica_guardrails_mcp import sanitize_bash_command
 
 # Próbáljuk betölteni a környezeti változókat a VPS ~/.env fájljából
 env_file = os.path.expanduser("~/Jules_mx/.env")
@@ -120,7 +119,15 @@ def search_rag_labels(query: str) -> str:
 # --- ALAPVETŐ RENDSZER ESZKÖZÖK ---
 
 @mcp.tool()
-async def execute_bash(command: str) -> str:
+async def sanitize_bash_command(cmd: str) -> bool:
+    forbidden = ['>', '>>', 'tee', '|']
+    for f in forbidden:
+        if f in cmd:
+            return False
+    return True
+
+@mcp.tool()
+def execute_bash(command: str) -> str:
     """
     Futtat egy bash parancsot a VPS-en.
     PIPELINE GATE: Fájlba írás (>, >>, tee) SZIGORÚAN TILOS a kódgenerálási gát megkerülése miatt!
@@ -136,9 +143,6 @@ async def execute_bash(command: str) -> str:
          return "Hiba: Veszélyes parancs letiltva a sandboxban."
 
     try:
-        # Regex sanitization to protect host OS from destructive commands
-        safe_command = sanitize_bash_command(command)
-
         import subprocess
         import os
         work_dir = os.path.expanduser("~/Jules_ICA_Builder/")
@@ -169,47 +173,6 @@ async def list_files_mcp(directory: str) -> str:
         return "\n".join(files)
     except Exception as e:
         return f"Hiba olvasáskor: {str(e)}"
-
-@mcp.tool()
-def check_system_health() -> str:
-    """
-    Rendszerfelügyeleti ellenőrzés (Health Check).
-    Megvizsgálja a CPU, RAM állapotát, és hogy futnak-e a szükséges szolgáltatások (Router, Daemon).
-    """
-    try:
-        import psutil
-
-        cpu_percent = psutil.cpu_percent(interval=1)
-        mem = psutil.virtual_memory()
-
-        output = ["🏥 Rendszer Állapot (Health Check)"]
-        output.append(f"CPU Kihasználtság: {cpu_percent}%")
-        output.append(f"RAM Kihasználtság: {mem.percent}% ({mem.available / (1024*1024):.0f} MB szabad)")
-
-        # Szolgáltatások ellenőrzése
-        router_running = False
-        daemon_running = False
-
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            try:
-                cmdline = proc.info['cmdline']
-                if cmdline:
-                    cmd_str = " ".join(cmdline)
-                    if 'ica_mcp_router.py' in cmd_str:
-                        router_running = True
-                    if 'agent_keepalive.py' in cmd_str:
-                        daemon_running = True
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                pass
-
-        output.append(f"🔌 MCP Router (ica_mcp_router.py): {'✅ FUT' if router_running else '❌ LEÁLLT'}")
-        output.append(f"💓 Supervisor Daemon (agent_keepalive.py): {'✅ FUT' if daemon_running else '❌ LEÁLLT'}")
-
-        return "\n".join(output)
-    except ImportError:
-        return "⚠️ Hiba: A 'psutil' csomag hiányzik a Rendszerfelügyelet futtatásához. (pip install psutil)"
-    except Exception as e:
-        return f"❌ Hiba a rendszerfelügyelet futtatásakor: {e}"
 
 @mcp.tool()
 async def read_file_mcp(filepath: str) -> str:
@@ -643,60 +606,31 @@ async def github_read_file(owner: str, repo: str, file_path: str, branch: str = 
         return f"Hiba a fájl letöltésekor: {e}"
 
 
+
 @mcp.tool()
 async def execute_python(code: str) -> str:
-    """
-    Lefuttat egy Python kódot egy IZOLÁLT Bubblewrap környezetben a VPS-en.
-    Hasznos adatelemzéshez, matematikai számításokhoz vagy gyors logikai tesztekhez.
-    """
     import os
     import subprocess
-
     work_dir = os.path.expanduser("~/Jules_ICA_Builder/")
     temp_file = os.path.join(work_dir, "temp_interpreter_script.py")
     try:
-        with open(temp_file, "w", encoding="utf-8") as f:
+        with open(temp_file, "w") as f:
             f.write(code)
-
         bwrap_cmd = [
-            "bwrap",
-            "--ro-bind", "/", "/",
-            "--bind", "/tmp", "/tmp",
+            "bwrap", "--unshare-all", "--ro-bind", "/", "/",
+            "--dev", "/dev", "--proc", "/proc",
             "--bind", work_dir, work_dir,
-            "--dev", "/dev",
-            "--proc", "/proc",
-            "--die-with-parent",
-            "--",
+            "--unshare-net",
             "/home/misi/Jules_mx/venv/bin/python3", temp_file
         ]
+        result = subprocess.run(bwrap_cmd, capture_output=True, text=True, timeout=30)
+        return f"Kimenet:
+{result.stdout}
 
-        result = subprocess.run(bwrap_cmd, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10, cwd=work_dir)
-        return f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
-    except subprocess.TimeoutExpired:
-        return "Hiba: A Python szkript futása időtúllépés miatt megszakítva (végtelen ciklus?)."
+Hibák:
+{result.stderr}" if result.stderr else result.stdout
     except Exception as e:
-        return f"Kritikus hiba a futtatáskor: {e}"
-
-
-
-
-
-
-# --- RAG ÉS MEMÓRIA (ARCHIVAL & RECALL) ESZKÖZÖK ---
-
-
-
-
-
-RAG_DATABASES = {
-    "Chatbot": os.path.expanduser("~/Rag_epites, chatbot_csv_data_llm_RAG/RAG_CHATBOT_CSV_DATA_LLM_github.db"),
-    "BRAIN2": os.path.expanduser("/home/misi/BRAIN2_DEV_RAG/brain2_dev_knowledge.db"),
-    "Gerilla": os.path.expanduser("~/Gerilla_RAG/Gerilla_RAG.db"),
-    "MX_Linux": os.path.expanduser("~/MX_LINUX_RAG/mx_linux_knowledge.db"),
-    "MQL5_Articles": os.path.expanduser("~/MQL5_Theory/mql5_articles_brain2dev.db"),
-    "MQL5_Theory": os.path.expanduser("~/MQL5_Theory/mql5_native_knowledge.db")
-}
-
+        return f"Kritikus hiba a futtatás során: {e}"
 @mcp.tool()
 async def search_rag_database(rag_name: str, keyword: str, limit: int = 3) -> str:
     """
@@ -876,30 +810,62 @@ async def create_full_backup() -> str:
 
 @mcp.tool()
 async def deep_planning(initial_state: str, max_iterations: int = 5) -> str:
-    """
-    System 2 (Foresight) tervezés az MCTS (Monte Carlo Tree Search) alapján.
-    Feltérképezi a problématereket a memóriagráffal párhuzamosan.
-    """
     try:
         import ica_mcts_planner
-        planner = ica_mcts_planner.MCTSPlanner(max_iterations=max_iterations)
+        import subprocess
+        import sys
+        import os
+        import re
 
-        # Egyszerű teszt generátor és értékelő (Dummy a teljes implementáció előtt)
+        # Helper a lokális Llama meghívásához
+        def call_llama(prompt, system="Te egy logikai tervező AI vagy. Légy tömör."):
+            llama_path = os.path.join(os.path.dirname(__file__), "vps_llama_client.py")
+            cmd = [sys.executable, llama_path, prompt, "--model", "qwen2.5:1.5b", "--system", system]
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+                # Kinyerjük az outputból csak a Llama választ
+                if "LLAMA VÁLASZ" in res.stdout:
+                    return res.stdout.split("LLAMA VÁLASZ")[1].replace("="*50, "").strip()
+                return ""
+            except:
+                return ""
+
+        planner = ica_mcts_planner.MCTSPlanner(max_iterations=max_iterations, exploration_weight=2.0)
+
         def gen_func(state):
-            return [f"{state} -> Step A", f"{state} -> Step B", f"{state} -> Step C"]
+            prompt = f"Adott az alábbi állapot/kérdés: '{state}'. Sorolj fel maximum 3 logikus következő lépést vagy alcélt, amit meg kellene tenni a megoldásához. Csak a lépéseket írd le egymás alá, pontozás nélkül."
+            resp = call_llama(prompt)
+            actions = []
+            if resp:
+                lines = resp.split('\n')
+                for line in lines[:3]:
+                    clean = line.strip().strip('-*0123456789. ')
+                    if clean:
+                        actions.append(f"{state} -> {clean}")
+            if not actions:
+                actions = [f"{state} -> (Fallback) Kutatás folytatása"]
+            return actions
 
         def eval_func(state):
+            prompt = f"Értékeld a következő gondolatmenetet/tervet 0.0-tól 1.0-ig terjedő skálán aszerint, hogy mennyire logikus és hatékony. Csak egyetlen lebegőpontos számot írj le, semmi mást! Gondolatmenet: '{state}'"
+            resp = call_llama(prompt)
+            try:
+                # Keresünk valami szám-szerűt a válaszban
+                nums = re.findall(r"0\.\d+|1\.0|0|1", resp)
+                if nums:
+                    return float(nums[0])
+            except:
+                pass
             import random
-            return random.uniform(0, 1)
+            return random.uniform(0.3, 0.7)
 
         best_path = planner.search(initial_state, gen_func, eval_func)
+        import json
         return json.dumps({"status": "success", "best_predicted_path": best_path})
     except Exception as e:
         return f"Hiba az MCTS tervezés során: {e}"
 
 def main():
-
-    """Futtatja a szervert stdio módban."""
     print("🚀 Jules VPS MCP Szerver elindítva (stdio módban).", file=sys.stderr)
     mcp.run()
 

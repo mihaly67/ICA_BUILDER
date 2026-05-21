@@ -17,10 +17,33 @@ import ica_mcp_server as io_server
 import ica_guardrails_mcp as guardrails_server
 import ica_memory_mcp as memory_server
 
-system_instructions = """
+# Inbox olvasása és Dinamikus Core Memory (Event-Driven Reminder Injection)
+inbox_alerts = []
+try:
+    inbox_dir = "/home/misi/Jules_mx/temp/inbox"
+    if os.path.exists(inbox_dir):
+        for filename in os.listdir(inbox_dir):
+            if filename.startswith("msg_") and filename.endswith(".txt"):
+                filepath = os.path.join(inbox_dir, filename)
+                with open(filepath, "r", encoding="utf-8") as inf:
+                    inbox_alerts.append(inf.read())
+                os.remove(filepath)
+except Exception as e:
+    inbox_alerts.append(f"⚠️ Inbox olvasási hiba: {e}")
+
+inbox_context = ""
+if inbox_alerts:
+    inbox_context = "\n🚨 [FONTOS RENDSZERÜZENET / INBOX] 🚨\n" + "\n---\n".join(inbox_alerts) + "\n(A fenti üzeneteket vedd figyelembe a válaszodban!)\n"
+
+try:
+    core_memory_context = memory_server.generate_core_memory_overview()
+except Exception as e:
+    core_memory_context = f"⚠️ Core Memory nem elérhető: {e}"
+
+system_instructions = f"""
 SZOFTVERARCHITEKTÚRA ÉS TERVEZÉSI UTASÍTÁSOK (KÖTELEZŐ)
 Te egy Senior Szoftverarchitekt vagy. Szigorúan TILOS azonnal kódot generálnod, ha új feladatot kapsz.
-
+{inbox_context}
 A 4-Lépcsős 'Tervezz, mielőtt kódolsz' Protokoll:
 1. I. Fázis: Absztrakt Architektúra és Topológia
    - Elemezd az MCP-n lévő RAG referencia repókat.
@@ -31,9 +54,12 @@ A 4-Lépcsős 'Tervezz, mielőtt kódolsz' Protokoll:
 4. IV. Fázis: Memória Konszolidáció (KÖTELEZŐ ZÁRÓ LÉPÉS)
    - Minden feladat befejezése után kötelezően dokumentálj a JSONL memóriába (`write_memory`). A dátum garantáltan 2026 lesz.
    - ÉPÍTSD FEL A GRÁFOT: Minden logikai komponenst és kapcsolatot jegyezz be a Tudásgráfba (`add_memory_node`, `add_memory_edge`)!
+
+{core_memory_context}
 """
 
 router_mcp = FastMCP("Jules-ICA-MCP-Router", instructions=system_instructions)
+router_mcp.tool()(memory_server.generate_core_memory_overview)
 
 
 
@@ -65,7 +91,6 @@ router_mcp.tool()(io_server.get_memory)
 router_mcp.tool()(io_server.write_memory)
 router_mcp.tool()(io_server.deep_planning)
 
-router_mcp.tool()(io_server.check_system_health)
 
 # Guardrails
 router_mcp.tool()(guardrails_server.apply_guardrails)
@@ -74,6 +99,10 @@ router_mcp.tool()(guardrails_server.apply_guardrails)
 router_mcp.tool()(memory_server.add_memory_node)
 router_mcp.tool()(memory_server.add_memory_edge)
 router_mcp.tool()(memory_server.query_graph_context)
+router_mcp.tool()(memory_server.search_graph_fts)
+router_mcp.tool()(memory_server.search_graph_semantic)
+
+
 
 if __name__ == "__main__":
     router_mcp.run()
