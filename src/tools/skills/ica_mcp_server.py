@@ -119,7 +119,7 @@ def search_rag_labels(query: str) -> str:
 # --- ALAPVETŐ RENDSZER ESZKÖZÖK ---
 
 def sanitize_bash_command(cmd: str) -> bool:
-    forbidden = ['>', '>>', 'tee', '|']
+    forbidden = ['>', '>>', 'tee']
     for f in forbidden:
         if f in cmd:
             return False
@@ -610,11 +610,14 @@ async def execute_python(code: str) -> str:
     try:
         with open(temp_file, "w") as f:
             f.write(code)
+
         bwrap_cmd = [
             "bwrap", "--unshare-all", "--ro-bind", "/", "/",
             "--dev", "/dev", "--proc", "/proc",
+            "--bind", "/tmp", "/tmp",
             "--bind", work_dir, work_dir,
             "--unshare-net",
+            "--die-with-parent",
             "/home/misi/Jules_mx/venv/bin/python3", temp_file
         ]
         result = subprocess.run(bwrap_cmd, capture_output=True, text=True, timeout=30)

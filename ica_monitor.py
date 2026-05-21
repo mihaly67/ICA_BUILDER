@@ -73,6 +73,7 @@ def make_telemetry_table():
     logs = get_recent_mcp_logs(15)
 
 
+
     for row in logs:
         ts_str = time.strftime('%H:%M:%S', time.localtime(row[0]))
         tool_name = row[1]
@@ -90,12 +91,24 @@ def make_telemetry_table():
 
         if tool_name == "execute_bash":
             cmd = args_obj.get('command', '')
-            tool_name = f"[cyan]bash[/]: {cmd[:30]}..."
+            # Vágjuk le a boilerplate útvonalakat
+            cmd = cmd.replace("/home/misi/Jules_mx/venv/bin/python3", "python3")
+            cmd = cmd.replace("/home/misi/Jules_ICA_Builder/src/tools/skills/", "skills/")
+            cmd = cmd.replace("/home/misi/Jules_ICA_Builder/", "ica/")
+            cmd = cmd.replace("tools/skills/mcp_bridge_tool.py --tool", "mcp")
+
+            # Ha idézőjelek miatt túl hosszú a json payload a bash args-ban, takarítsuk
+            cmd = re.sub(r'--args \'.*?\'', '--args {...}', cmd)
+
+            # Hagyjunk meg egy kicsit hosszabb részt (pl. 45 karakter)
+            tool_name = f"[cyan]bash[/]: {cmd[:45]}..." if len(cmd) > 45 else f"[cyan]bash[/]: {cmd}"
         elif tool_name == "write_file_mcp":
             fp = args_obj.get('filepath', '')
             tool_name = f"[cyan]write[/]: {fp.split('/')[-1]}"
         elif tool_name == "search_graph_semantic" or tool_name == "search_graph_fts":
             tool_name = f"[magenta]search[/]: {args_obj.get('query', '')[:20]}"
+        elif tool_name == "execute_python":
+            tool_name = "[cyan]python_eval[/]: (script)"
         else:
             tool_name = f"[magenta]{tool_name}[/]"
 
