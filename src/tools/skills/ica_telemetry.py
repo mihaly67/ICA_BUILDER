@@ -33,7 +33,8 @@ def log_mcp_call(tool_name, args, execution_time_ms, status, error_msg=""):
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"Telemetria hiba: {e}")
+        import sys
+        print(f"Telemetria hiba: {e}", file=sys.stderr)
 
 # Auto-init importkor
 init_db()

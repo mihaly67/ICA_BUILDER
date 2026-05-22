@@ -44,7 +44,7 @@ MEMORY_REGISTER_FILE = os.path.expanduser("~/Jules_ICA_Builder/agent_register.js
 def init_memory_register():
     if not os.path.exists(MEMORY_REGISTER_FILE):
         with open(MEMORY_REGISTER_FILE, 'w') as f:
-            pass
+            f.write('{"Core": {}}')
 
 init_memory_register()
 
