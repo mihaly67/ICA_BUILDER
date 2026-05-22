@@ -29,26 +29,6 @@ if os.path.exists(env_file):
 # Létrehozunk egy MCP szervert
 mcp = FastMCP("Jules-ICA-Cognitive-Engine")
 
-RAG_DATABASES = {
-    "Chatbot": "/home/misi/Rag_epites, chatbot_csv_data_llm_RAG/RAG_CHATBOT_CSV_DATA_LLM_github.db",
-    "BRAIN2": "/home/misi/BRAIN2_DEV_RAG/brain2_dev_knowledge.db",
-    "Gerilla": "/home/misi/Gerilla_RAG/GERILLA_RAG_knowledge.db",
-    "MX_Linux": "/home/misi/MX_LINUX_RAG/MX_LINUX_knowledge.db",
-    "MQL5_Articles": "/home/misi/Jules cikk és fájl letöltés_RAG/RAG_MQL5_ARTICLES_github.db",
-    "MQL5_Theory": "/home/misi/MQL5_Theory_RAG/RAG_MQL5_THEORY_knowledge.db",
-    "Jules_ICA_Builder": "/home/misi/Jules_ICA_Builder/agent_memory.jsonl"
-}
-
-MEMORY_REGISTER_FILE = os.path.expanduser("~/Jules_ICA_Builder/agent_register.jsonl")
-
-def init_memory_register():
-    if not os.path.exists(MEMORY_REGISTER_FILE):
-        with open(MEMORY_REGISTER_FILE, 'w') as f:
-            pass
-
-init_memory_register()
-
-
 
 # Konfiguráció
 TARGET_DIR = "/home/misi/Jules_ICA_Builder"
