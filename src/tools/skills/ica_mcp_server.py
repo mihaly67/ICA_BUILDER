@@ -349,7 +349,7 @@ async def fetch_webpage_mcp(url: str) -> str:
                 'Accept-Language': 'hu-HU,hu;q=0.9,en-US;q=0.8,en;q=0.7'
             }
         )
-        with urllib.request.urlopen(req, timeout=15) as response:
+        with urllib.request.urlopen(req, timeout=120) as response:
             html = response.read()
             soup = BeautifulSoup(html, 'html.parser')
             # Kiszedjük a felesleget
@@ -808,7 +808,7 @@ async def deep_planning(initial_state: str, max_iterations: int = 5) -> str:
             llama_path = os.path.join(os.path.dirname(__file__), "vps_llama_client.py")
             cmd = [sys.executable, llama_path, prompt, "--model", "qwen2.5:1.5b", "--system", system]
             try:
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
                 # Kinyerjük az outputból csak a Llama választ
                 if "LLAMA VÁLASZ" in res.stdout:
                     return res.stdout.split("LLAMA VÁLASZ")[1].replace("="*50, "").strip()
@@ -819,7 +819,7 @@ async def deep_planning(initial_state: str, max_iterations: int = 5) -> str:
         planner = ica_mcts_planner.MCTSPlanner(max_iterations=max_iterations, exploration_weight=2.0)
 
         def gen_func(state):
-            prompt = f"Adott az alábbi állapot/kérdés: '{state}'. Sorolj fel maximum 3 logikus következő lépést vagy alcélt, amit meg kellene tenni a megoldásához. Csak a lépéseket írd le egymás alá, pontozás nélkül."
+            prompt = f"Állapot: '{state}'. Sorolj fel max 2 logikus következő lépést a megoldáshoz. Tömören, egymás alá."
             resp = call_llama(prompt)
             actions = []
             if resp:
@@ -847,7 +847,8 @@ async def deep_planning(initial_state: str, max_iterations: int = 5) -> str:
 
         best_path = planner.search(initial_state, gen_func, eval_func)
         import json
-        return json.dumps({"status": "success", "best_predicted_path": best_path})
+        tree_data = planner.get_tree_data()
+        return json.dumps({"status": "success", "best_predicted_path": best_path, "tree_data": tree_data})
     except Exception as e:
         return f"Hiba az MCTS tervezés során: {e}"
 

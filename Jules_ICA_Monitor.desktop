@@ -1,8 +1,9 @@
 [Desktop Entry]
-Name=Jules ICA Monitor
-Comment=Launch Jules ICA Web Dashboard via SSH Tunnel
-Exec=/usr/bin/env bash -c "cd $(pwd) && ./start_jules_monitor.sh"
-Icon=utilities-system-monitor
-Terminal=true
+Version=1.0
 Type=Application
-Categories=Development;
+Name=Jules ICA Monitor
+Comment=Indítja a Jules VPS telemetria dashboardját (SSH tunnel)
+Exec=bash -c "cd '$(dirname %k)' && ./start_jules_monitor.sh"
+Icon=utilities-terminal
+Terminal=true
+Categories=Utility;Development;

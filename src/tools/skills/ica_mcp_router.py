@@ -26,11 +26,34 @@ def add_tool_with_telemetry(func):
         try:
             res = await func(*args, **kwargs)
             exec_time = (time.time() - start) * 1000
-            ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "success")
+
+            mcts_data = None
+            if func.__name__ == "deep_planning" and isinstance(res, str):
+                import json
+                try:
+                    res_dict = json.loads(res)
+                    if "tree_data" in res_dict:
+                        mcts_data = res_dict["tree_data"]
+                except:
+                    pass
+
+            ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "success", mcts_data=mcts_data)
             return res
         except Exception as e:
             exec_time = (time.time() - start) * 1000
             ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "error", str(e))
+
+            # AUTO-CRITIQUE TRIGGER
+            try:
+                import json
+                import datetime
+                err_msg = str(e).replace('"', "'")
+                critique = f"Auto-Reflexió: A '{func.__name__}' eszköz hibára futott. Ok: {err_msg}. Az Agentnek felül kell vizsgálnia a stratégiát, mert valószínűleg megsértett egy Guardrailt vagy hibás argumentumokat adott át."
+                with open("/home/misi/Jules_ICA_Builder/agent_memory.jsonl", "a") as mem_f:
+                    mem_f.write(json.dumps({"timestamp": datetime.datetime.now().isoformat(), "category": "Reflection", "content": critique}) + "\n")
+            except:
+                pass
+
             raise e
 
     @functools.wraps(func)
@@ -39,11 +62,34 @@ def add_tool_with_telemetry(func):
         try:
             res = func(*args, **kwargs)
             exec_time = (time.time() - start) * 1000
-            ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "success")
+
+            mcts_data = None
+            if func.__name__ == "deep_planning" and isinstance(res, str):
+                import json
+                try:
+                    res_dict = json.loads(res)
+                    if "tree_data" in res_dict:
+                        mcts_data = res_dict["tree_data"]
+                except:
+                    pass
+
+            ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "success", mcts_data=mcts_data)
             return res
         except Exception as e:
             exec_time = (time.time() - start) * 1000
             ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "error", str(e))
+
+            # AUTO-CRITIQUE TRIGGER
+            try:
+                import json
+                import datetime
+                err_msg = str(e).replace('"', "'")
+                critique = f"Auto-Reflexió: A '{func.__name__}' eszköz hibára futott. Ok: {err_msg}. Az Agentnek felül kell vizsgálnia a stratégiát, mert valószínűleg megsértett egy Guardrailt vagy hibás argumentumokat adott át."
+                with open("/home/misi/Jules_ICA_Builder/agent_memory.jsonl", "a") as mem_f:
+                    mem_f.write(json.dumps({"timestamp": datetime.datetime.now().isoformat(), "category": "Reflection", "content": critique}) + "\n")
+            except:
+                pass
+
             raise e
 
     wrapped = async_wrapped if inspect.iscoroutinefunction(func) else sync_wrapped
@@ -68,7 +114,7 @@ try:
                 filepath = os.path.join(inbox_dir, filename)
                 with open(filepath, "r", encoding="utf-8") as inf:
                     inbox_alerts.append(inf.read())
-                os.remove(filepath)
+                # # os.remove(filepath) - Letiltva a code-review alapján, hogy ne töröljön inbox fájlokat - Letiltva a code-review alapján, hogy ne töröljön inbox fájlokat
 except Exception as e:
     inbox_alerts.append(f"⚠️ Inbox olvasási hiba: {e}")
 
@@ -146,5 +192,21 @@ add_tool_with_telemetry(memory_server.search_graph_semantic)
 
 
 
+
+def trigger_reflection(error_msg: str) -> str:
+    """Manually triggers the auto-critique module to write a reflection to memory."""
+    try:
+        import json
+        import datetime
+        critique = f"Auto-Reflexió (Triggered): Kritikus hiba vagy anomália észlelve a rendszerben. Részletek: {error_msg}. Az Agentnek azonnal korrigálnia kell a stratégiáját és felülvizsgálni a kódolási gyakorlatát."
+        with open("/home/misi/Jules_ICA_Builder/agent_memory.jsonl", "a") as mem_f:
+            mem_f.write(json.dumps({"timestamp": datetime.datetime.now().isoformat(), "category": "Reflection", "content": critique}) + "\n")
+        return "Reflection successfully injected."
+    except Exception as e:
+        return f"Failed to inject reflection: {e}"
+
+add_tool_with_telemetry(trigger_reflection)
+
 if __name__ == "__main__":
+
     router_mcp.run()

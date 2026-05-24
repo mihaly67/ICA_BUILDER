@@ -16,8 +16,10 @@ def main():
         "prompt": args.prompt,
         "system": args.system,
         "stream": False,
+        "keep_alive": "30m",
         "options": {
-            "temperature": 0.7
+            "temperature": 0.7,
+            "num_predict": 100
         }
     }
 
@@ -25,7 +27,7 @@ def main():
     req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
 
     try:
-        with urllib.request.urlopen(req, timeout=30) as response:
+        with urllib.request.urlopen(req, timeout=120) as response:
             result = json.loads(response.read().decode('utf-8'))
             print("LLAMA VÁLASZ")
             print("="*50)
