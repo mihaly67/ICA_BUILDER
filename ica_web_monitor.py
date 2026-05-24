@@ -564,11 +564,13 @@ def get_data():
             if mcts_row and mcts_row[0]:
                 try:
                     mcts_latest = json.loads(mcts_row[0])
-                except:
-                    pass
+                except Exception as ex:
+                    mcts_latest = {"name": f"Hiba a JSON parszolásban: {ex}"}
             conn.close()
+        except sqlite3.Error as e:
+            mcts_latest = {"name": f"Adatbázis hiba: {e}"}
         except Exception as e:
-            print("DB hiba:", e)
+            mcts_latest = {"name": f"Ismeretlen hiba: {e}"}
 
     # 3. JSONL memória lekérése
     memory_entries = []
@@ -651,16 +653,21 @@ def get_data():
     except Exception as e:
         reflection_html = f"Hiba: {e}"
 
-    # Extra adatok (Health, Inbox)
+    # Extra adatok (Health, Inbox) - Biztonságos (Zero Trust) implementáció psutil használatával
     system_health_str = "Nem elérhető"
     try:
-        import subprocess
-        cpu = subprocess.check_output(["bash", "-c", "top -bn1 | grep 'Cpu(s)' | awk '{print 100 - $8 \"%\"}'"]).decode().strip()
-        mem = subprocess.check_output('free -m | awk \'NR==2{printf "%.2f%%", $3*100/$2 }\'', shell=True).decode().strip()
-        disk = subprocess.check_output(["bash", "-c", "df -h / | awk '$NF==\"/\"{print $5}'"]).decode().strip()
+        import psutil
+        import shutil
+        cpu = f"{psutil.cpu_percent(interval=0.1)}%"
+        mem_info = psutil.virtual_memory()
+        mem = f"{mem_info.percent}%"
+        disk_info = shutil.disk_usage("/")
+        disk = f"{(disk_info.used / disk_info.total) * 100:.1f}%"
         system_health_str = f"CPU Használat: {cpu}\nRAM Használat: {mem}\nLemez (/): {disk}"
+    except ImportError:
+        system_health_str = "Hiba: A 'psutil' modul hiányzik. Telepítsd: pip install psutil"
     except Exception as e:
-        system_health_str = f"Hiba: {e}"
+        system_health_str = f"Hiba lekérdezéskor: {str(e)}"
 
     inbox_str = ""
     inbox_dir = "/home/misi/Jules_mx/temp/inbox"
