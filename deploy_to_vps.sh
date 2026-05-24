@@ -30,7 +30,7 @@ echo "✅ Hitelesítés sikeres."
 
 # 1. Biztonsági mentés készítése a szerveren
 echo "📦 VPS fájlok biztonsági mentése..."
-ssh -o BatchMode=yes "$VPS_USER@$VPS_IP" "tar -czf ~/Jules_ICA_backup_\$(date +%s).tar.gz -C /home/misi Jules_ICA_Builder"
+ssh -o BatchMode=yes "$VPS_USER@$VPS_IP" "if [ -d \"$TARGET_DIR\" ]; then tar -czf ~/Jules_ICA_backup_\$(date +%s).tar.gz -C /home/misi Jules_ICA_Builder; fi"
 
 # 2. Lokális fájlok átmásolása (rsync használata biztonságos szűréssel)
 echo "📤 Fájlok átvitele (rsync)..."
@@ -51,7 +51,7 @@ echo "🔄 Szolgáltatások újraindítása (mcp router, web monitor)..."
 ssh -o BatchMode=yes "$VPS_USER@$VPS_IP" "
     pkill -f ica_mcp_router.py || true;
     kill -9 \$(lsof -t -i :8080) 2>/dev/null || true;
-    cd $TARGET_DIR && nohup python3 ica_web_monitor.py > monitor.log 2>&1 &
+    cd $TARGET_DIR && nohup python3 src/tools/skills/ica_mcp_router.py > mcp_router.log 2>&1 & nohup python3 ica_web_monitor.py > monitor.log 2>&1 &
 "
 
 # Siker esetén a trap levétele

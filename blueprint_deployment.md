@@ -4,16 +4,11 @@
 Három külső LLM auditor (Claude, Mistral, ChatGPT) megállapította, hogy a jelenlegi telepítési, megszakítási és monitorozási folyamatok "hazudnak", kiskapukat tartalmaznak (pl. `sshpass` text-alapú jelszóval, nyílt SSH tunneling, shell-injection sebezhetőség a monitorban), és megkerülik az `AGENTS_ICA.md` biztonsági előírásait (Zero Trust). A cél ezeknek a biztonsági réseknek a maradéktalan bezárása a helyi sandboxban, mielőtt élesben a VPS-re kerülnének.
 
 ## Decision
-1. **Biztonságos CI/CD (deploy_to_vps.sh):**
-   - **Tilos az `sshpass` használata!** A jelszavas hitelesítést teljes mértékben felváltja az SSH Public/Private kulcs alapú hitelesítés (`~/.ssh/id_rsa`).
-   - A scriptnek szigorúan ellenőriznie kell az SSH kapcsolat meglétét jelszó kérése nélkül (pl. `ssh -o BatchMode=yes`).
-   - Szigorú hibaellenőrzés: ha bármelyik lépés (pl. backup) hibára fut, a script azonnal leáll (`set -e`).
-   - Nem másolunk nyersen mindent; csak a dedikált terjesztési csomagot mozgatjuk `rsync`-kel vagy szűrt `scp`-vel.
 
 1. **Biztonságos CI/CD (deploy_to_vps.sh):**
    - **Tilos az `sshpass` használata!** SSH Public/Private kulcs használata kötelező.
-   - Szigorú hibaellenőrzés: `set -e` használata, **kiegészítve egy `trap` mechanizmussal** (rollback/cleanup), hogy hiba esetén a rendszer ne maradjon inkonzisztens "félkész" állapotban.
-   - Szigorú `rsync` szűrés: az `.rsyncignore` vagy kiterjedt `--exclude` paraméterek (pl. `.git`, `.env`, lokális `.db`, `.log` fájlok) használata kötelező a lokális szemét VPS-re kerülésének elkerülése végett.
+   - Szigorú hibaellenőrzés: `set -e` használata, **kiegészítve egy `trap` mechanizmussal** (rollback/cleanup), hogy hiba esetén a rendszer ne maradjon inkonzisztens "félkész" állapotban. Külön figyelmet kell fordítani a fájl-alapú műveletekre, például a kezdeti könyvtárak biztonsági mentésére (`if [ -d ... ]`).
+   - Szigorú `rsync` szűrés: kiterjedt `--exclude` paraméterek (pl. `.git`, `.env`, lokális `.db`, `.log` fájlok) használata kötelező a lokális szemét VPS-re kerülésének elkerülése végett.
 
 2. **Biztonságos Kill Switch & Revive (kill_vps_connection.sh & restore_vps_connection.sh):**
    - A Kill Switch megszakítja a lokális SSH agent-et, bezár minden socket-et, és iptables/ufw szabállyal blokkolja a VPS felé a forgalmat.

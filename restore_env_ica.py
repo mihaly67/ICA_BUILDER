@@ -13,9 +13,8 @@ def install_dependencies():
     try:
         # Hozzáadjuk a '--break-system-packages' paramétert ha szükséges újabb pip-nél, vagy sudo-val globálisan.
         # De biztonságosabb simán az aktuális pyenv / virtualenv pipjét használni:
-        subprocess.run([sys.executable, "-m", "pip", "install", "mcp", "paramiko", "python-dotenv"], check=True)
-        # Az sshpass telepítése az apt-get használatával:
-        subprocess.run("sudo apt-get update && sudo apt-get install -y sshpass", shell=True, check=True)
+        subprocess.run([sys.executable, "-m", "pip", "install", "mcp", "paramiko", "python-dotenv", "psutil", "flask", "waitress"], check=True)
+        # A telepítőből kikerült az sshpass az új Zero Trust architektúra (public-key hitelesítés) miatt.
         print("✅ Függőségek telepítve.")
     except Exception as e:
         print(f"⚠️ Hiba a függőségek telepítésekor: {e}")
