@@ -35,7 +35,9 @@ misi ALL=(ALL) NOPASSWD: /usr/sbin/iptables -D OUTPUT -d 5.189.163.88 -j REJECT
 misi ALL=(ALL) NOPASSWD: /usr/sbin/ufw deny out to 5.189.163.88
 misi ALL=(ALL) NOPASSWD: /usr/sbin/ufw delete deny out to 5.189.163.88
 misi ALL=(ALL) NOPASSWD: /usr/bin/umount -l /home/misi/Jules_ICA_Builder_Remote
+misi ALL=(ALL) NOPASSWD: /usr/bin/chattr
 ```
+*A chattr az append-only log fájlok (Tamper-Proofing) miatt szükséges.*
 *Mentsd el a fájlt (nano esetén: `Ctrl+O`, `Enter`, `Ctrl+X`).*
 
 ### 3. Az Élesítés

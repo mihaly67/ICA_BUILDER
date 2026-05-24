@@ -54,7 +54,18 @@ ssh -o BatchMode=yes "$VPS_USER@$VPS_IP" "
     cd $TARGET_DIR && nohup python3 src/tools/skills/ica_mcp_router.py > mcp_router.log 2>&1 & nohup python3 ica_web_monitor.py > monitor.log 2>&1 &
 "
 
+# 4. Tamper-Proofing (Append-Only) bekapcsolása a logokra (Opcionális: NOPASSWD sudo esetén)
+echo "🔒 Tamper-proofing (chattr +a) megkísérlése a naplófájlokon..."
+ssh -o BatchMode=yes "$VPS_USER@$VPS_IP" "
+    cd $TARGET_DIR;
+    touch monitor_errors.log monitor.log mcp_router.log;
+    sudo -n chattr +a monitor_errors.log 2>/dev/null || echo ' - (i) Nincs sudo jog a chattr-hez, Append-Only mód átugorva.';
+    sudo -n chattr +a monitor.log 2>/dev/null || true;
+    sudo -n chattr +a mcp_router.log 2>/dev/null || true;
+"
+
 # Siker esetén a trap levétele
 trap - ERR
 
 echo "✅ Deploy sikeresen befejeződött!"
+echo "ℹ️ Megjegyzés: A 'chattr +a' (Append-Only) működéséhez a /etc/sudoers fájlban engedélyezni kell: $VPS_USER ALL=(ALL) NOPASSWD: /usr/bin/chattr"
