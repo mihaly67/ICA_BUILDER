@@ -631,6 +631,14 @@ def get_data():
     except Exception as e:
         blueprint_html = f"Hiba: {e}"
 
+    # Hibakezeléshez szükséges Correlation ID generátor
+    import uuid
+    import logging
+
+    # Ha nincs még beállítva a logging
+    if not logging.getLogger().handlers:
+        logging.basicConfig(filename='monitor_errors.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+
     reflection_html = ""
     try:
         # A teljes memóriát átnézzük visszafelé, hogy MÁR NE vesszen el a 15-ös korlát miatt
@@ -651,7 +659,9 @@ def get_data():
         if not reflection_html:
             reflection_html = "<span class='text-muted'>Jelenleg nincs új rendszer-reflexió.</span>"
     except Exception as e:
-        reflection_html = f"Hiba: {e}"
+        err_id = str(uuid.uuid4())[:8]
+        logging.error(f"Error [{err_id}] in Reflection parsing: {e}", exc_info=True)
+        reflection_html = f"<span class='text-danger'>Rendszerhiba a reflexiók betöltésekor. ID: Err-{err_id}</span>"
 
     # Extra adatok (Health, Inbox) - Biztonságos (Zero Trust) implementáció psutil használatával
     system_health_str = "Nem elérhető"
@@ -665,9 +675,11 @@ def get_data():
         disk = f"{(disk_info.used / disk_info.total) * 100:.1f}%"
         system_health_str = f"CPU Használat: {cpu}\nRAM Használat: {mem}\nLemez (/): {disk}"
     except ImportError:
-        system_health_str = "Hiba: A 'psutil' modul hiányzik. Telepítsd: pip install psutil"
+        system_health_str = "Hiba: A 'psutil' modul hiányzik a szerveren."
     except Exception as e:
-        system_health_str = f"Hiba lekérdezéskor: {str(e)}"
+        err_id = str(uuid.uuid4())[:8]
+        logging.error(f"Error [{err_id}] in System Health Check: {e}", exc_info=True)
+        system_health_str = f"Rendszerállapot lekérdezés sikertelen. ID: Err-{err_id}"
 
     inbox_str = ""
     inbox_dir = "/home/misi/Jules_mx/temp/inbox"
