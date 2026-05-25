@@ -26,10 +26,27 @@ if ! ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeo
 fi
 echo "✅ Hitelesítés sikeres."
 
-# 1. Biztonsági mentés készítése
-echo "📦 VPS fájlok biztonsági mentése..."
+# 1. Biztonsági mentés és Fekete Doboz Log Rotáció
+echo "📦 VPS fájlok biztonsági mentése és Log Rotáció..."
 ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_IP" "
     if [ -d \"$TARGET_DIR\" ]; then
+        # A logok méretének ellenőrzése (50MB fölött rotálunk)
+        cd \"$TARGET_DIR\"
+        for logfile in monitor_errors.log monitor.log mcp_router.log auditor_access.log auditor_errors.log Knowledge_Base/agent_memory.jsonl; do
+            if [ -f \"\$logfile\" ]; then
+                size=\$(stat -c%s \"\$logfile\" 2>/dev/null || echo 0)
+                if [ \"\$size\" -gt 52428800 ]; then
+                    echo \" - (i) A \$logfile mérete meghaladta az 50MB-ot. Logrotate indul...\"
+                    # Ideiglenesen levesszük a chattr védelmet, hogy tudjunk gzip-elni és üríteni
+                    sudo -n chattr -a \"\$logfile\" 2>/dev/null || true
+                    cp \"\$logfile\" \"\${logfile}_\$(date +%s).bak\"
+                    gzip \"\${logfile}_\$(date +%s).bak\" || true
+                    > \"\$logfile\"
+                    sudo -n chattr +a \"\$logfile\" 2>/dev/null || true
+                fi
+            fi
+        done
+        cd ~
         tar -czf ~/Jules_ICA_backup_\$(date +%s).tar.gz -C /home/misi Jules_ICA_Builder
     else
         mkdir -p \"$TARGET_DIR\"
@@ -105,23 +122,58 @@ TimeoutStopSec=10
 WantedBy=default.target
 SVC
 
-    # Systemd daemon frissítése és szolgáltatások indítása
+    # ica-auditor.service generálása
+    cat << 'SVC' > ~/.config/systemd/user/ica-auditor.service
+[Unit]
+Description=Jules ICA Auditor MCP Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$TARGET_DIR
+ExecStart=/usr/bin/python3 src/tools/skills/auditor_mcp_server.py
+StandardOutput=append:$TARGET_DIR/auditor_errors.log
+StandardError=append:$TARGET_DIR/auditor_errors.log
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target
+SVC
+
+    # Systemd daemon frissítése
     systemctl --user daemon-reload
-    systemctl --user enable ica-router.service ica-monitor.service
-    systemctl --user restart ica-router.service ica-monitor.service
+    systemctl --user enable ica-router.service ica-monitor.service ica-auditor.service
 "
 
-# 5. Tamper-Proofing (Append-Only) és Hash ellenőrzés
-echo "🔒 Integritás ellenőrzése és Tamper-proofing (chattr +a)..."
+# 5. Pre-flight Check, Tamper-Proofing és Indítás (Állapotgép)
+echo "🔒 Integritás ellenőrzése és Szolgáltatások (Systemd) indítása..."
 ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_IP" "
+    # Pre-flight check
+    if [ ! -d \"$TARGET_DIR\" ]; then
+        echo '❌ Hiba: A TARGET_DIR nem létezik a VPS-en. Deploy megszakítva.'
+        exit 1
+    fi
     cd $TARGET_DIR;
+
     # Hash verifikáció
     echo ' - SHA256 Manifest ellenőrzése...'
     sha256sum -c manifest.sha256 --quiet || { echo '❌ Hiba: Az integritás ellenőrzés (Hash) elbukott a VPS-en!'; exit 1; }
     echo ' - ✅ Hash-Pinning sikeres. A kód nem korrumpálódott.'
 
-    touch monitor_errors.log monitor.log mcp_router.log Knowledge_Base/agent_memory.jsonl;
-    sudo -n chattr +a monitor_errors.log monitor.log mcp_router.log Knowledge_Base/agent_memory.jsonl || echo '⚠️ Nincs NOPASSWD sudo jog a chattr-hez, Append-Only (Fekete Doboz) mód SIKERTELEN.';
+    # Tamper-Proofing az indítás ELŐTT (Race Condition kivédése)
+    echo ' - Naplófájlok előkészítése és Append-Only védelme...'
+    mkdir -p Knowledge_Base
+    touch monitor_errors.log monitor.log mcp_router.log auditor_access.log auditor_errors.log Knowledge_Base/agent_memory.jsonl
+    set +e
+    sudo -n chattr +a monitor_errors.log monitor.log mcp_router.log auditor_access.log auditor_errors.log Knowledge_Base/agent_memory.jsonl || echo '⚠️ Nincs NOPASSWD sudo jog a chattr-hez, Append-Only (Fekete Doboz) mód SIKERTELEN.'
+    set -e
+
+    # Szolgáltatások újraindítása (A Systemd kezeli a SIGTERM/SIGKILL jeleket és az árvákat)
+    echo ' - Rendszerfolyamatok újraindítása (systemctl)...'
+    systemctl --user restart ica-router.service ica-monitor.service ica-auditor.service
 "
 
 # 6. Healthcheck (State-Awareness)
