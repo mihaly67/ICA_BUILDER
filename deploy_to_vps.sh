@@ -105,10 +105,31 @@ TimeoutStopSec=10
 WantedBy=default.target
 SVC
 
+    # ica-auditor.service generálása
+    cat << 'SVC' > ~/.config/systemd/user/ica-auditor.service
+[Unit]
+Description=Jules ICA Auditor MCP Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$TARGET_DIR
+ExecStart=/usr/bin/python3 src/tools/skills/auditor_mcp_server.py
+StandardOutput=append:$TARGET_DIR/auditor_errors.log
+StandardError=append:$TARGET_DIR/auditor_errors.log
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target
+SVC
+
     # Systemd daemon frissítése és szolgáltatások indítása
     systemctl --user daemon-reload
-    systemctl --user enable ica-router.service ica-monitor.service
-    systemctl --user restart ica-router.service ica-monitor.service
+    systemctl --user enable ica-router.service ica-monitor.service ica-auditor.service
+    systemctl --user restart ica-router.service ica-monitor.service ica-auditor.service
 "
 
 # 5. Tamper-Proofing (Append-Only) és Hash ellenőrzés
@@ -120,8 +141,8 @@ ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_IP" 
     sha256sum -c manifest.sha256 --quiet || { echo '❌ Hiba: Az integritás ellenőrzés (Hash) elbukott a VPS-en!'; exit 1; }
     echo ' - ✅ Hash-Pinning sikeres. A kód nem korrumpálódott.'
 
-    touch monitor_errors.log monitor.log mcp_router.log Knowledge_Base/agent_memory.jsonl;
-    sudo -n chattr +a monitor_errors.log monitor.log mcp_router.log Knowledge_Base/agent_memory.jsonl || echo '⚠️ Nincs NOPASSWD sudo jog a chattr-hez, Append-Only (Fekete Doboz) mód SIKERTELEN.';
+    touch monitor_errors.log monitor.log mcp_router.log auditor_access.log auditor_errors.log Knowledge_Base/agent_memory.jsonl;
+    sudo -n chattr +a monitor_errors.log monitor.log mcp_router.log auditor_access.log auditor_errors.log Knowledge_Base/agent_memory.jsonl || echo '⚠️ Nincs NOPASSWD sudo jog a chattr-hez, Append-Only (Fekete Doboz) mód SIKERTELEN.';
 "
 
 # 6. Healthcheck (State-Awareness)
