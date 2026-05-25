@@ -5,8 +5,14 @@ import os
 import time
 import uuid
 import logging
+import html
+import psutil
+import shutil
 
 # Globális logging inicializálás az információ-szivárgás elkerülésére
+# psutil CPU percent initial call to calibrate interval=None later
+psutil.cpu_percent()
+
 if not logging.getLogger().handlers:
     logging.basicConfig(filename='monitor_errors.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -532,8 +538,6 @@ def index():
 
 @app.route('/api/data')
 def get_data():
-    import html
-
     # 1. Alapértelmezett kimeneti változók (biztonságos inicializálás)
     stats = {"total": 0, "avg_time": 0, "error_rate": 0}
     telemetry_rows = []
@@ -570,7 +574,7 @@ def get_data():
                     "args_raw": r[2],
                     "duration": r[3],
                     "status": r[4],
-                    "error": html.escape(r[5]) if r[5] else ""
+                    "error": html.escape(str(r[5])) if r[5] else ""
                 })
 
             # --- MCTS Data ---
@@ -603,6 +607,7 @@ def get_data():
     # 3. JSONL Memória Lekérése
     memory_entries = []
     memory_stats = {"lines": 0, "size_kb": 0}
+    reflection_html = "<span class='text-muted'>Jelenleg nincs új rendszer-reflexió.</span>"
     if os.path.exists(MEMORY_PATH):
         try:
             size_kb = os.path.getsize(MEMORY_PATH) / 1024.0
@@ -610,17 +615,33 @@ def get_data():
                 lines = f.readlines()
                 memory_stats["lines"] = len(lines)
                 memory_stats["size_kb"] = round(size_kb, 2)
-                for line in reversed(lines[-15:]):  # Utolsó 15 bejegyzés, legújabb elöl
+
+                # Szedjük ki az utolsó 15 elemet a JS felületnek
+                for line in reversed(lines[-15:]):
                     try:
                         mem_obj = json.loads(line)
                         if 'content' in mem_obj:
-                            mem_obj['content'] = html.escape(mem_obj['content'])
+                            mem_obj['content'] = html.escape(str(mem_obj['content']))
                         memory_entries.append(mem_obj)
+                    except:
+                        pass
+
+                # Keressük meg a legutolsó reflexiót
+                for line in reversed(lines):
+                    try:
+                        mem_obj = json.loads(line)
+                        if mem_obj.get('category') in ['Context_Summary', 'Reflection', 'Architecture_Pipeline_Update', 'Guardrail_Block']:
+                            ts = mem_obj.get('timestamp', '')
+                            cat = html.escape(str(mem_obj.get('category', '')))
+                            cont = html.escape(str(mem_obj.get('content', '')))
+                            reflection_html = f"<span class='text-secondary'>[{ts}]</span> <b class='text-danger'>[{cat}]</b><br><i style='color: #e2e8f0;'>\"{cont}\"</i>"
+                            break
                     except:
                         pass
         except Exception as e:
             err_id = str(uuid.uuid4())[:8]
             logging.error(f"Error [{err_id}] in Memory parsing: {e}", exc_info=True)
+            reflection_html = f"<span class='text-danger'>Rendszerhiba a reflexiók betöltésekor. ID: Err-{err_id}</span>"
 
     blueprint_html = ""
     bp_path = "/home/misi/Jules_ICA_Builder/blueprint.md"
@@ -671,16 +692,14 @@ def get_data():
     # Extra adatok (Health, Inbox) - Biztonságos (Zero Trust) implementáció psutil használatával
     system_health_str = "Nem elérhető"
     try:
-        import psutil
-        import shutil
-        cpu = f"{psutil.cpu_percent(interval=0.1)}%"
+        # psutil és shutil már globálisan importálva vannak
+        # interval=None azonnal visszatér (nem blokkol) a legutolsó cpu_percent hívás óta eltelt átlaggal
+        cpu = f"{psutil.cpu_percent(interval=None)}%"
         mem_info = psutil.virtual_memory()
         mem = f"{mem_info.percent}%"
         disk_info = shutil.disk_usage("/")
         disk = f"{(disk_info.used / disk_info.total) * 100:.1f}%"
         system_health_str = f"CPU Használat: {cpu}\nRAM Használat: {mem}\nLemez (/): {disk}"
-    except ImportError:
-        system_health_str = "Hiba: A 'psutil' modul hiányzik a szerveren."
     except Exception as e:
         err_id = str(uuid.uuid4())[:8]
         logging.error(f"Error [{err_id}] in System Health Check: {e}", exc_info=True)

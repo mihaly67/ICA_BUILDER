@@ -10,10 +10,10 @@ VPS_IP="5.189.163.88"
 # 1. Minden SSH kapcsolat megszakítása (sockets, agent, futó processek)
 echo "🔧 SSH Agent kulcsok törlése és kapcsolatok lezárása..."
 ssh-add -D 2>/dev/null || true
-pkill -f "ssh.*$VPS_IP" || true
+pkill -f "ssh.*5\.189\.163\.88" || true
 pkill -f "sshpass" || true
-pkill -f "scp.*$VPS_IP" || true
-pkill -f "rsync.*$VPS_IP" || true
+pkill -f "scp.*5\.189\.163\.88" || true
+pkill -f "rsync.*5\.189\.163\.88" || true
 
 # BIZTONSÁGI PLUSZ: Multiplexelt SSH socket fájlok megsemmisítése
 echo "🧹 Beragadt SSH socket fájlok törlése..."
@@ -21,21 +21,21 @@ rm -f ~/.ssh/cm-* 2>/dev/null || true
 rm -rf ~/.ssh/sockets/* 2>/dev/null || true
 
 # 2. Hálózati elszigetelés (Iptables Reject szabály ideiglenesen)
-echo "🛡️ Hálózati útválasztás blokkolása a VPS felé..."
+echo "🛡️ Hálózati útválasztás blokkolása a VPS felé (kimenő és bejövő)..."
 if command -v iptables &> /dev/null; then
     # Nem vár jelszóra: ha a sudo elakad, időtúllépés lép érvénybe vagy a -n flag miatt elbukik, de a script halad tovább
-    sudo -n iptables -I OUTPUT -d "$VPS_IP" -j REJECT 2>/dev/null || echo "⚠️ Nem sikerült az iptables szabályt hozzáadni (hiányzó NOPASSWD sudo jog)."
+    sudo -n iptables -w -I OUTPUT -d "$VPS_IP" -j REJECT 2>/dev/null || echo "⚠️ Nem sikerült az iptables OUTPUT szabályt hozzáadni (hiányzó NOPASSWD sudo jog)."
+    sudo -n iptables -w -I INPUT -s "$VPS_IP" -j DROP 2>/dev/null || echo "⚠️ Nem sikerült az iptables INPUT szabályt hozzáadni."
 fi
 if command -v ufw &> /dev/null; then
-    sudo -n ufw deny out to "$VPS_IP" 2>/dev/null || echo "⚠️ Nem sikerült az ufw szabályt hozzáadni (hiányzó NOPASSWD sudo jog)."
+    sudo -n ufw deny out to "$VPS_IP" 2>/dev/null || echo "⚠️ Nem sikerült az ufw OUTPUT szabályt hozzáadni."
+    sudo -n ufw deny from "$VPS_IP" 2>/dev/null || echo "⚠️ Nem sikerült az ufw INPUT szabályt hozzáadni."
 fi
 
 # 3. Mountolt fájlrendszerek leválasztása (lazy unmount)
-echo "🔌 Hálózati megosztások leválasztása..."
-if mount | grep -q "Jules_ICA_Builder"; then
-    fusermount -uz ~/Jules_ICA_Builder_Remote 2>/dev/null || true
-    sudo -n umount -l ~/Jules_ICA_Builder_Remote 2>/dev/null || true
-fi
+echo "🔌 Hálózati megosztások leválasztása (vakon)..."
+fusermount -uz ~/Jules_ICA_Builder_Remote 2>/dev/null || true
+sudo -n umount -l ~/Jules_ICA_Builder_Remote 2>/dev/null || true
 
 # 4. Értesítés (ha asztali környezeten fut)
 if command -v notify-send &> /dev/null; then
