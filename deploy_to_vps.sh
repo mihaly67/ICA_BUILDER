@@ -26,10 +26,27 @@ if ! ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeo
 fi
 echo "✅ Hitelesítés sikeres."
 
-# 1. Biztonsági mentés készítése
-echo "📦 VPS fájlok biztonsági mentése..."
+# 1. Biztonsági mentés és Fekete Doboz Log Rotáció
+echo "📦 VPS fájlok biztonsági mentése és Log Rotáció..."
 ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_IP" "
     if [ -d \"$TARGET_DIR\" ]; then
+        # A logok méretének ellenőrzése (50MB fölött rotálunk)
+        cd \"$TARGET_DIR\"
+        for logfile in monitor_errors.log monitor.log mcp_router.log auditor_access.log auditor_errors.log Knowledge_Base/agent_memory.jsonl; do
+            if [ -f \"\$logfile\" ]; then
+                size=\$(stat -c%s \"\$logfile\" 2>/dev/null || echo 0)
+                if [ \"\$size\" -gt 52428800 ]; then
+                    echo \" - (i) A \$logfile mérete meghaladta az 50MB-ot. Logrotate indul...\"
+                    # Ideiglenesen levesszük a chattr védelmet, hogy tudjunk gzip-elni és üríteni
+                    sudo -n chattr -a \"\$logfile\" 2>/dev/null || true
+                    cp \"\$logfile\" \"\${logfile}_\$(date +%s).bak\"
+                    gzip \"\${logfile}_\$(date +%s).bak\" || true
+                    > \"\$logfile\"
+                    sudo -n chattr +a \"\$logfile\" 2>/dev/null || true
+                fi
+            fi
+        done
+        cd ~
         tar -czf ~/Jules_ICA_backup_\$(date +%s).tar.gz -C /home/misi Jules_ICA_Builder
     else
         mkdir -p \"$TARGET_DIR\"
@@ -150,7 +167,9 @@ ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_IP" 
     echo ' - Naplófájlok előkészítése és Append-Only védelme...'
     mkdir -p Knowledge_Base
     touch monitor_errors.log monitor.log mcp_router.log auditor_access.log auditor_errors.log Knowledge_Base/agent_memory.jsonl
+    set +e
     sudo -n chattr +a monitor_errors.log monitor.log mcp_router.log auditor_access.log auditor_errors.log Knowledge_Base/agent_memory.jsonl || echo '⚠️ Nincs NOPASSWD sudo jog a chattr-hez, Append-Only (Fekete Doboz) mód SIKERTELEN.'
+    set -e
 
     # Szolgáltatások újraindítása (A Systemd kezeli a SIGTERM/SIGKILL jeleket és az árvákat)
     echo ' - Rendszerfolyamatok újraindítása (systemctl)...'
