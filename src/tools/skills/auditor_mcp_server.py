@@ -56,10 +56,10 @@ def read_blackbox_log(filename: str) -> str:
         log_audit_action("read_blackbox_log", "BLOCKED", f"Jogosulatlan fájltípus: {filename}")
         return "403 Forbidden: Kizárólag .log és .jsonl fájlok olvasása engedélyezett!"
 
-    # Biztonságos elérési út összeállítása (abszolút)
-    safe_path = os.path.abspath(os.path.join(TARGET_DIR, filename))
-    if not safe_path.startswith(TARGET_DIR):
-        log_audit_action("read_blackbox_log", "BLOCKED", f"Escaping TARGET_DIR: {safe_path}")
+    # Biztonságos elérési út összeállítása (Szimbolikus linkek feloldása)
+    safe_path = os.path.realpath(os.path.join(TARGET_DIR, filename))
+    if not safe_path.startswith(os.path.realpath(TARGET_DIR)):
+        log_audit_action("read_blackbox_log", "BLOCKED", f"Escaping TARGET_DIR (Symlink exploit): {safe_path}")
         return "403 Forbidden: Érvénytelen elérési út!"
 
     if not os.path.exists(safe_path):

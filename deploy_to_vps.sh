@@ -126,23 +126,35 @@ TimeoutStopSec=10
 WantedBy=default.target
 SVC
 
-    # Systemd daemon frissítése és szolgáltatások indítása
+    # Systemd daemon frissítése
     systemctl --user daemon-reload
     systemctl --user enable ica-router.service ica-monitor.service ica-auditor.service
-    systemctl --user restart ica-router.service ica-monitor.service ica-auditor.service
 "
 
-# 5. Tamper-Proofing (Append-Only) és Hash ellenőrzés
-echo "🔒 Integritás ellenőrzése és Tamper-proofing (chattr +a)..."
+# 5. Pre-flight Check, Tamper-Proofing és Indítás (Állapotgép)
+echo "🔒 Integritás ellenőrzése és Szolgáltatások (Systemd) indítása..."
 ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_IP" "
+    # Pre-flight check
+    if [ ! -d \"$TARGET_DIR\" ]; then
+        echo '❌ Hiba: A TARGET_DIR nem létezik a VPS-en. Deploy megszakítva.'
+        exit 1
+    fi
     cd $TARGET_DIR;
+
     # Hash verifikáció
     echo ' - SHA256 Manifest ellenőrzése...'
     sha256sum -c manifest.sha256 --quiet || { echo '❌ Hiba: Az integritás ellenőrzés (Hash) elbukott a VPS-en!'; exit 1; }
     echo ' - ✅ Hash-Pinning sikeres. A kód nem korrumpálódott.'
 
-    touch monitor_errors.log monitor.log mcp_router.log auditor_access.log auditor_errors.log Knowledge_Base/agent_memory.jsonl;
-    sudo -n chattr +a monitor_errors.log monitor.log mcp_router.log auditor_access.log auditor_errors.log Knowledge_Base/agent_memory.jsonl || echo '⚠️ Nincs NOPASSWD sudo jog a chattr-hez, Append-Only (Fekete Doboz) mód SIKERTELEN.';
+    # Tamper-Proofing az indítás ELŐTT (Race Condition kivédése)
+    echo ' - Naplófájlok előkészítése és Append-Only védelme...'
+    mkdir -p Knowledge_Base
+    touch monitor_errors.log monitor.log mcp_router.log auditor_access.log auditor_errors.log Knowledge_Base/agent_memory.jsonl
+    sudo -n chattr +a monitor_errors.log monitor.log mcp_router.log auditor_access.log auditor_errors.log Knowledge_Base/agent_memory.jsonl || echo '⚠️ Nincs NOPASSWD sudo jog a chattr-hez, Append-Only (Fekete Doboz) mód SIKERTELEN.'
+
+    # Szolgáltatások újraindítása (A Systemd kezeli a SIGTERM/SIGKILL jeleket és az árvákat)
+    echo ' - Rendszerfolyamatok újraindítása (systemctl)...'
+    systemctl --user restart ica-router.service ica-monitor.service ica-auditor.service
 "
 
 # 6. Healthcheck (State-Awareness)
