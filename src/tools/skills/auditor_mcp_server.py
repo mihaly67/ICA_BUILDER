@@ -40,23 +40,31 @@ mcp = FastMCP(
     instructions="Kizárólag a Jules ICA Fekete Doboz naplóinak és telemetriájának objektív ellenőrzésére szolgál. Nincs írási jog."
 )
 
+# Biztonságos Whitelist a logfájlokhoz (Path Traversal védelem)
+LOG_WHITELIST = {
+    "telemetry": "mcp_router.log",
+    "monitor": "monitor.log",
+    "monitor_errors": "monitor_errors.log",
+    "memory": "Knowledge_Base/agent_memory.jsonl",
+    "auditor_access": "auditor_access.log",
+    "auditor_errors": "auditor_errors.log"
+}
+
 @mcp.tool()
-def read_blackbox_log(filename: str) -> str:
+def read_blackbox_log(log_key: str) -> str:
     """
     Kiolvassa egy Fekete Doboz log tartalmát. Biztonsági okokból szigorúan csak a
-    /home/misi/Jules_ICA_Builder/ gyökerében lévő, .log vagy .jsonl kiterjesztésű fájlokat olvashatja.
+    whitelistben szereplő kulcsokat (pl. 'memory', 'telemetry') fogadja el.
     Visszaadja a fájl utolsó 500 sorát az OOM (Memória kimerülés) elkerülése végett.
     """
-    # 1. Path Traversal Védelem (Szigorú validáció)
-    if ".." in filename or "/" in filename:
-        log_audit_action("read_blackbox_log", "BLOCKED", f"Path Traversal kísérlet észlelve: {filename}")
-        return "403 Forbidden: Path Traversal kísérlet észlelve és naplózva!"
+    # 1. Path Traversal Védelem (Whitelist alapú ellenőrzés)
+    if log_key not in LOG_WHITELIST:
+        log_audit_action("read_blackbox_log", "BLOCKED", f"Jogosulatlan Log Key kérés: {log_key}")
+        return f"403 Forbidden: Érvénytelen log azonosító! Engedélyezettek: {list(LOG_WHITELIST.keys())}"
 
-    if not (filename.endswith(".log") or filename.endswith(".jsonl")):
-        log_audit_action("read_blackbox_log", "BLOCKED", f"Jogosulatlan fájltípus: {filename}")
-        return "403 Forbidden: Kizárólag .log és .jsonl fájlok olvasása engedélyezett!"
+    filename = LOG_WHITELIST[log_key]
 
-    # Biztonságos elérési út összeállítása (Szimbolikus linkek feloldása)
+    # Biztonságos elérési út összeállítása (Szimbolikus linkek feloldása, bár a whitelist már garantálja a struktúrát)
     safe_path = os.path.realpath(os.path.join(TARGET_DIR, filename))
     if not safe_path.startswith(os.path.realpath(TARGET_DIR)):
         log_audit_action("read_blackbox_log", "BLOCKED", f"Escaping TARGET_DIR (Symlink exploit): {safe_path}")
@@ -64,14 +72,14 @@ def read_blackbox_log(filename: str) -> str:
 
     if not os.path.exists(safe_path):
         log_audit_action("read_blackbox_log", "ERROR", f"File not found: {safe_path}")
-        return f"404 Not Found: A {filename} nem létezik."
+        return f"404 Not Found: A(z) {log_key} fájl ({filename}) nem létezik."
 
-    log_audit_action("read_blackbox_log", "SUCCESS", f"Accessing: {filename}")
+    log_audit_action("read_blackbox_log", "SUCCESS", f"Accessing: {log_key} ({filename})")
 
     # 2. Fájl olvasása memóriabarát módon (OOM védelem tail-el)
     try:
         import subprocess
-        # A tail -n 500 subprocess használata biztonságos, mert a safe_path már szigorúan validálva lett.
+        # A tail -n 500 subprocess használata biztonságos, mert a safe_path egy hardcoded whitelistből származik.
         output = subprocess.check_output(["tail", "-n", "500", safe_path]).decode('utf-8', errors='replace')
         return output
     except Exception as e:
