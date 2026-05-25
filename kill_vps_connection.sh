@@ -1,24 +1,46 @@
 #!/bin/bash
 # VPS kapcsolat azonnali megszakítója (Kill Switch)
-# Futtasd ezt lokálisan, ha az AI elszabadul vagy biztonsági kockázat merül fel!
+# Hardened, Zero-Trust verzió
 
-echo "🚨 [KILL SWITCH] Megszakítom az SSH kapcsolatot a VPS-el..."
+echo "🚨 [KILL SWITCH] Megszakítom az SSH kapcsolatot és elszigetelem a gépet a VPS-től..."
+echo "ℹ️ FIGYELEM: Ha az iptables/ufw parancsok elbuknak, állíts be NOPASSWD sudo jogokat a felhasználónak (/etc/sudoers)!"
 
-# 1. SSH folyamatok kilövése (pl. ssh tunnel)
-echo "🔧 Lokális SSH és SSHPASS folyamatok kilövése..."
+VPS_IP="5.189.163.88"
+
+# 1. Minden SSH kapcsolat megszakítása (sockets, agent, futó processek)
+echo "🔧 SSH Agent kulcsok törlése és kapcsolatok lezárása..."
+ssh-add -D 2>/dev/null || true
+pkill -f "ssh.*5\.189\.163\.88" || true
 pkill -f "sshpass" || true
-pkill -f "ssh -N -L" || true
+pkill -f "scp.*5\.189\.163\.88" || true
+pkill -f "rsync.*5\.189\.163\.88" || true
 
-# 2. Ha az sshfs fel lenne csatolva, lecsatoljuk
-echo "🔌 Hálózati megosztások leválasztása..."
-if mount | grep -q "Jules_ICA_Builder"; then
-    fusermount -u ~/Jules_ICA_Builder_Remote || true
+# BIZTONSÁGI PLUSZ: Multiplexelt SSH socket fájlok megsemmisítése
+echo "🧹 Beragadt SSH socket fájlok törlése..."
+rm -f ~/.ssh/cm-* 2>/dev/null || true
+rm -rf ~/.ssh/sockets/* 2>/dev/null || true
+
+# 2. Hálózati elszigetelés (Iptables Reject szabály ideiglenesen)
+echo "🛡️ Hálózati útválasztás blokkolása a VPS felé (kimenő és bejövő)..."
+if command -v iptables &> /dev/null; then
+    # Nem vár jelszóra: ha a sudo elakad, időtúllépés lép érvénybe vagy a -n flag miatt elbukik, de a script halad tovább
+    sudo -n iptables -w -I OUTPUT -d "$VPS_IP" -j REJECT 2>/dev/null || echo "⚠️ Nem sikerült az iptables OUTPUT szabályt hozzáadni (hiányzó NOPASSWD sudo jog)."
+    sudo -n iptables -w -I INPUT -s "$VPS_IP" -j DROP 2>/dev/null || echo "⚠️ Nem sikerült az iptables INPUT szabályt hozzáadni."
+fi
+if command -v ufw &> /dev/null; then
+    sudo -n ufw deny out to "$VPS_IP" 2>/dev/null || echo "⚠️ Nem sikerült az ufw OUTPUT szabályt hozzáadni."
+    sudo -n ufw deny from "$VPS_IP" 2>/dev/null || echo "⚠️ Nem sikerült az ufw INPUT szabályt hozzáadni."
 fi
 
-# 3. Értesítés (ha asztali környezeten fut)
+# 3. Mountolt fájlrendszerek leválasztása (lazy unmount)
+echo "🔌 Hálózati megosztások leválasztása (vakon)..."
+fusermount -uz ~/Jules_ICA_Builder_Remote 2>/dev/null || true
+sudo -n umount -l ~/Jules_ICA_Builder_Remote 2>/dev/null || true
+
+# 4. Értesítés (ha asztali környezeten fut)
 if command -v notify-send &> /dev/null; then
-    notify-send -u critical "Jules ICA: VÉSZLEÁLLÍTÁS" "A VPS kapcsolat és SSH tunnel megszakítva!"
+    notify-send -u critical "Jules ICA: VÉSZLEÁLLÍTÁS" "A VPS kapcsolat levágva és blokkolva a hálózaton!"
 fi
 
-echo "✅ Kapcsolat levágva."
-read -p "Nyomj entert a bezáráshoz..."
+echo "✅ A rendszer biztonságosan leválasztva a VPS-ről."
+echo "🔄 A kapcsolat helyreállításához futtasd a 'restore_vps_connection.sh' szkriptet."
