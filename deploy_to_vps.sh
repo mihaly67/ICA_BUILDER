@@ -120,8 +120,8 @@ ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_IP" 
     sha256sum -c manifest.sha256 --quiet || { echo '❌ Hiba: Az integritás ellenőrzés (Hash) elbukott a VPS-en!'; exit 1; }
     echo ' - ✅ Hash-Pinning sikeres. A kód nem korrumpálódott.'
 
-    touch monitor_errors.log monitor.log mcp_router.log agent_memory.jsonl;
-    sudo -n chattr +a monitor_errors.log monitor.log mcp_router.log agent_memory.jsonl || echo '⚠️ Nincs NOPASSWD sudo jog a chattr-hez, Append-Only (Fekete Doboz) mód SIKERTELEN.';
+    touch monitor_errors.log monitor.log mcp_router.log Knowledge_Base/agent_memory.jsonl;
+    sudo -n chattr +a monitor_errors.log monitor.log mcp_router.log Knowledge_Base/agent_memory.jsonl || echo '⚠️ Nincs NOPASSWD sudo jog a chattr-hez, Append-Only (Fekete Doboz) mód SIKERTELEN.';
 "
 
 # 6. Healthcheck (State-Awareness)

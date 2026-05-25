@@ -30,10 +30,14 @@ sudo visudo
 ```
 Másold be a fájl végére ezt a blokkot (ellenőrizd az iptables elérési útját a `which iptables` paranccsal, de általában ez megfelelő):
 ```text
-misi ALL=(ALL) NOPASSWD: /usr/sbin/iptables -I OUTPUT -d 5.189.163.88 -j REJECT
-misi ALL=(ALL) NOPASSWD: /usr/sbin/iptables -D OUTPUT -d 5.189.163.88 -j REJECT
+misi ALL=(ALL) NOPASSWD: /usr/sbin/iptables -w -I OUTPUT -d 5.189.163.88 -j REJECT
+misi ALL=(ALL) NOPASSWD: /usr/sbin/iptables -w -D OUTPUT -d 5.189.163.88 -j REJECT
+misi ALL=(ALL) NOPASSWD: /usr/sbin/iptables -w -I INPUT -s 5.189.163.88 -j DROP
+misi ALL=(ALL) NOPASSWD: /usr/sbin/iptables -w -D INPUT -s 5.189.163.88 -j DROP
 misi ALL=(ALL) NOPASSWD: /usr/sbin/ufw deny out to 5.189.163.88
 misi ALL=(ALL) NOPASSWD: /usr/sbin/ufw delete deny out to 5.189.163.88
+misi ALL=(ALL) NOPASSWD: /usr/sbin/ufw deny from 5.189.163.88
+misi ALL=(ALL) NOPASSWD: /usr/sbin/ufw delete deny from 5.189.163.88
 misi ALL=(ALL) NOPASSWD: /usr/bin/umount -l /home/misi/Jules_ICA_Builder_Remote
 misi ALL=(ALL) NOPASSWD: /usr/bin/chattr
 ```
