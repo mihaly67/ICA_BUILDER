@@ -16,6 +16,10 @@ psutil.cpu_percent()
 if not logging.getLogger().handlers:
     logging.basicConfig(filename='monitor_errors.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Cache a CPU használathoz, hogy a gyors API hívások ne mutassanak 0.0%-ot
+last_cpu_time = 0
+last_cpu_percent = 0.0
+
 app = Flask(__name__)
 
 DB_PATH = "/home/misi/Jules_ICA_Builder/mcp_telemetry.db"
@@ -674,9 +678,15 @@ def get_data():
     # Extra adatok (Health, Inbox) - Biztonságos (Zero Trust) implementáció psutil használatával
     system_health_str = "Nem elérhető"
     try:
-        # psutil és shutil már globálisan importálva vannak
-        # interval=None azonnal visszatér (nem blokkol) a legutolsó cpu_percent hívás óta eltelt átlaggal
-        cpu = f"{psutil.cpu_percent(interval=None)}%"
+        global last_cpu_time, last_cpu_percent
+        current_time = time.time()
+
+        # CPU frissítése maximum 1 másodpercenként a 0.0% anomália elkerülésére
+        if current_time - last_cpu_time > 1.0:
+            last_cpu_percent = psutil.cpu_percent(interval=None)
+            last_cpu_time = current_time
+
+        cpu = f"{last_cpu_percent}%"
         mem_info = psutil.virtual_memory()
         mem = f"{mem_info.percent}%"
         disk_info = shutil.disk_usage("/")
@@ -709,6 +719,7 @@ def get_data():
     graph_edges = []
     GRAPH_DB_PATH = "/home/misi/Jules_ICA_Builder/ica_knowledge_graph.db"
     if os.path.exists(GRAPH_DB_PATH):
+        conn_g = None
         try:
             db_uri_graph = f"file:{GRAPH_DB_PATH}?mode=ro"
             conn_g = sqlite3.connect(db_uri_graph, uri=True, timeout=5.0)
@@ -720,9 +731,12 @@ def get_data():
             cg.execute("SELECT source_id, target_id, relationship FROM edges")
             for r in cg.fetchall():
                 graph_edges.append({"source_id": r[0], "target_id": r[1], "relationship": r[2]})
-            conn_g.close()
         except Exception as e:
-            print("Graph DB hiba:", e)
+            err_id = str(uuid.uuid4())[:8]
+            logging.error(f"Error [{err_id}] in Graph DB: {e}", exc_info=True)
+        finally:
+            if conn_g:
+                conn_g.close()
 
     return jsonify({
         "stats": stats,

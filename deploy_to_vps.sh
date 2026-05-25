@@ -69,7 +69,7 @@ echo "🔒 Tamper-proofing (chattr +a) megkísérlése a naplófájlokon..."
 ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_IP" "
     cd $TARGET_DIR;
     touch monitor_errors.log monitor.log mcp_router.log agent_memory.jsonl;
-    sudo -n chattr +a monitor_errors.log monitor.log mcp_router.log agent_memory.jsonl 2>/dev/null || echo '⚠️ Nincs NOPASSWD sudo jog a chattr-hez, Append-Only (Fekete Doboz) mód SIKERTELEN.';
+    sudo -n chattr +a monitor_errors.log monitor.log mcp_router.log agent_memory.jsonl || echo '⚠️ Nincs NOPASSWD sudo jog a chattr-hez, Append-Only (Fekete Doboz) mód SIKERTELEN.';
 "
 
 # Siker esetén a trap levétele
