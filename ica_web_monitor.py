@@ -544,8 +544,9 @@ def get_data():
     guardrails_html = "Nincs adat"
     mcts_latest = {}
 
-    # 2. Közös, egyszeri adatbázis megnyitás (mode=ro)
+    # 2. Közös, egyszeri adatbázis megnyitás (mode=ro) File descriptor szivárgás ellen védve
     if os.path.exists(DB_PATH):
+        conn = None
         try:
             db_uri = f"file:{DB_PATH}?mode=ro"
             conn = sqlite3.connect(db_uri, uri=True, timeout=5.0)
@@ -597,47 +598,52 @@ def get_data():
             guardrails_html += f"<div>Összes fájl írási kísérlet: <b>{write_total}</b></div>"
             guardrails_html += f"<div>Blokkolt / Hiba: <b class='text-danger'>{write_errs}</b></div>"
 
-            conn.close()
         except sqlite3.Error as e:
             mcts_latest = {"name": f"Adatbázis hiba: {e}"}
             guardrails_html = f"Adatbázis hiba: {e}"
         except Exception as e:
             mcts_latest = {"name": f"Ismeretlen hiba: {e}"}
+        finally:
+            if conn:
+                conn.close()
 
-    # 3. JSONL Memória Lekérése
+    # 3. JSONL Memória Lekérése OOM (Out Of Memory) védelemmel
+    # A readlines() helyett egy külső eszközt (tail) vagy egy hatékony soronkénti puffert használunk
     memory_entries = []
     memory_stats = {"lines": 0, "size_kb": 0}
     reflection_html = "<span class='text-muted'>Jelenleg nincs új rendszer-reflexió.</span>"
     if os.path.exists(MEMORY_PATH):
         try:
             size_kb = os.path.getsize(MEMORY_PATH) / 1024.0
-            with open(MEMORY_PATH, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-                memory_stats["lines"] = len(lines)
-                memory_stats["size_kb"] = round(size_kb, 2)
+            memory_stats["size_kb"] = round(size_kb, 2)
 
-                # Szedjük ki az utolsó 15 elemet a JS felületnek
-                for line in reversed(lines[-15:]):
-                    try:
-                        mem_obj = json.loads(line)
+            # Visszafelé olvassuk a fájlt anélkül, hogy a teljes RAM-ot teleszemetelnénk a readlines()-szal.
+            # Egy nagyon egyszerű és robusztus megközelítés a subprocess 'tail' meghívása (mivel Linuxon vagyunk).
+            import subprocess
+            tail_lines = subprocess.check_output(["tail", "-n", "1000", MEMORY_PATH]).decode('utf-8').splitlines()
+            memory_stats["lines"] = len(tail_lines) # Becsült utolsó X sor alapján, valós sorszám helyett a gyorsaságért
+
+            found_reflection = False
+            for line in reversed(tail_lines):
+                if not line.strip():
+                    continue
+                try:
+                    mem_obj = json.loads(line)
+                    # Elmentjük az utolsó 15 elemet
+                    if len(memory_entries) < 15:
                         if 'content' in mem_obj:
                             mem_obj['content'] = html.escape(str(mem_obj['content']))
                         memory_entries.append(mem_obj)
-                    except:
-                        pass
 
-                # Keressük meg a legutolsó reflexiót
-                for line in reversed(lines):
-                    try:
-                        mem_obj = json.loads(line)
-                        if mem_obj.get('category') in ['Context_Summary', 'Reflection', 'Architecture_Pipeline_Update', 'Guardrail_Block']:
-                            ts = mem_obj.get('timestamp', '')
-                            cat = html.escape(str(mem_obj.get('category', '')))
-                            cont = html.escape(str(mem_obj.get('content', '')))
-                            reflection_html = f"<span class='text-secondary'>[{ts}]</span> <b class='text-danger'>[{cat}]</b><br><i style='color: #e2e8f0;'>\"{cont}\"</i>"
-                            break
-                    except:
-                        pass
+                    # Kikeressük az utolsó reflexiót
+                    if not found_reflection and mem_obj.get('category') in ['Context_Summary', 'Reflection', 'Architecture_Pipeline_Update', 'Guardrail_Block']:
+                        ts = mem_obj.get('timestamp', '')
+                        cat = html.escape(str(mem_obj.get('category', '')))
+                        cont = html.escape(str(mem_obj.get('content', '')))
+                        reflection_html = f"<span class='text-secondary'>[{ts}]</span> <b class='text-danger'>[{cat}]</b><br><i style='color: #e2e8f0;'>\"{cont}\"</i>"
+                        found_reflection = True
+                except Exception:
+                    pass # Zombie JSON védelem
         except Exception as e:
             err_id = str(uuid.uuid4())[:8]
             logging.error(f"Error [{err_id}] in Memory parsing: {e}", exc_info=True)
@@ -664,30 +670,6 @@ def get_data():
             blueprint_html = "<div class='text-danger'>Nincs blueprint.md (Design Fázis hiányzik!)</div>"
     except Exception as e:
         blueprint_html = f"Hiba: {e}"
-
-    reflection_html = ""
-    try:
-        # A teljes memóriát átnézzük visszafelé, hogy MÁR NE vesszen el a 15-ös korlát miatt
-        if os.path.exists(MEMORY_PATH):
-            with open(MEMORY_PATH, "r", encoding="utf-8") as mf:
-                all_lines = mf.readlines()
-                for line in reversed(all_lines):
-                    try:
-                        mem_obj = json.loads(line)
-                        if mem_obj.get('category') in ['Context_Summary', 'Reflection', 'Architecture_Pipeline_Update', 'Guardrail_Block']:
-                            ts = mem_obj.get('timestamp', '')
-                            cat = html.escape(mem_obj.get('category', ''))
-                            cont = html.escape(mem_obj.get('content', ''))
-                            reflection_html = f"<span class='text-secondary'>[{ts}]</span> <b class='text-danger'>[{cat}]</b><br><i style='color: #e2e8f0;'>\"{cont}\"</i>"
-                            break  # Megtaláltuk a legutolsót
-                    except:
-                        pass
-        if not reflection_html:
-            reflection_html = "<span class='text-muted'>Jelenleg nincs új rendszer-reflexió.</span>"
-    except Exception as e:
-        err_id = str(uuid.uuid4())[:8]
-        logging.error(f"Error [{err_id}] in Reflection parsing: {e}", exc_info=True)
-        reflection_html = f"<span class='text-danger'>Rendszerhiba a reflexiók betöltésekor. ID: Err-{err_id}</span>"
 
     # Extra adatok (Health, Inbox) - Biztonságos (Zero Trust) implementáció psutil használatával
     system_health_str = "Nem elérhető"

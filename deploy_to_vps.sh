@@ -22,19 +22,25 @@ echo "🚀 Kezdődik a biztonságos telepítés (Deploy) a VPS-re..."
 
 # 0. SSH Kapcsolat Validálása (Jelszó nélkül)
 echo "🔒 Hitelesítés ellenőrzése (Public Key)..."
-if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "$VPS_USER@$VPS_IP" echo "Ping" > /dev/null; then
-    echo "❌ Hiba: Nincs jelszó nélküli SSH hozzáférés! Futtasd: ssh-copy-id $VPS_USER@$VPS_IP"
+if ! ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 "$VPS_USER@$VPS_IP" echo "Ping" > /dev/null; then
+    echo "❌ Hiba: Nincs jelszó nélküli SSH hozzáférés, vagy megváltozott a szerver kulcsa! Futtasd: ssh-copy-id $VPS_USER@$VPS_IP"
     exit 1
 fi
 echo "✅ Hitelesítés sikeres."
 
 # 1. Biztonsági mentés készítése a szerveren
 echo "📦 VPS fájlok biztonsági mentése..."
-ssh -o BatchMode=yes "$VPS_USER@$VPS_IP" "if [ -d \"$TARGET_DIR\" ]; then tar -czf ~/Jules_ICA_backup_\$(date +%s).tar.gz -C /home/misi Jules_ICA_Builder; fi"
+ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_IP" "
+    if [ -d \"$TARGET_DIR\" ]; then
+        tar -czf ~/Jules_ICA_backup_\$(date +%s).tar.gz -C /home/misi Jules_ICA_Builder
+    else
+        mkdir -p \"$TARGET_DIR\"
+    fi
+"
 
 # 2. Lokális fájlok átmásolása (rsync használata biztonságos szűréssel)
 echo "📤 Fájlok átvitele (rsync)..."
-rsync -avz -e "ssh -o BatchMode=yes" \
+rsync -avz -e "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new" \
     --exclude '.git' \
     --exclude '__pycache__' \
     --exclude '*.db' \
@@ -48,8 +54,8 @@ rsync -avz -e "ssh -o BatchMode=yes" \
 
 # 3. Szolgáltatások újraindítása
 echo "🔄 Szolgáltatások újraindítása (mcp router, web monitor)..."
-ssh -o BatchMode=yes "$VPS_USER@$VPS_IP" "
-    pkill -f ica_mcp_router.py || true;
+ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_IP" "
+    pkill -u \"$VPS_USER\" -f ica_mcp_router.py || true;
     PIDS=\$(lsof -t -i :8080)
     if [ ! -z \"\$PIDS\" ]; then kill -9 \$PIDS 2>/dev/null || true; fi
     sleep 2
@@ -58,15 +64,12 @@ ssh -o BatchMode=yes "$VPS_USER@$VPS_IP" "
     nohup python3 ica_web_monitor.py >> monitor.log 2>&1 < /dev/null &
 "
 
-# 4. Tamper-Proofing (Append-Only) bekapcsolása a logokra (Opcionális: NOPASSWD sudo esetén)
+# 4. Tamper-Proofing (Append-Only) bekapcsolása a logokra
 echo "🔒 Tamper-proofing (chattr +a) megkísérlése a naplófájlokon..."
-ssh -o BatchMode=yes "$VPS_USER@$VPS_IP" "
+ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_IP" "
     cd $TARGET_DIR;
     touch monitor_errors.log monitor.log mcp_router.log agent_memory.jsonl;
-    sudo -n chattr +a monitor_errors.log 2>/dev/null || echo ' - (i) Nincs sudo jog a chattr-hez, Append-Only mód átugorva.';
-    sudo -n chattr +a monitor.log 2>/dev/null || true;
-    sudo -n chattr +a mcp_router.log 2>/dev/null || true;
-    sudo -n chattr +a agent_memory.jsonl 2>/dev/null || true;
+    sudo -n chattr +a monitor_errors.log monitor.log mcp_router.log agent_memory.jsonl 2>/dev/null || echo '⚠️ Nincs NOPASSWD sudo jog a chattr-hez, Append-Only (Fekete Doboz) mód SIKERTELEN.';
 "
 
 # Siker esetén a trap levétele
