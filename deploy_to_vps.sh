@@ -51,7 +51,7 @@ echo "🔄 Szolgáltatások újraindítása (mcp router, web monitor)..."
 ssh -o BatchMode=yes "$VPS_USER@$VPS_IP" "
     pkill -f ica_mcp_router.py || true;
     kill -9 \$(lsof -t -i :8080) 2>/dev/null || true;
-    cd $TARGET_DIR && nohup python3 src/tools/skills/ica_mcp_router.py > mcp_router.log 2>&1 & nohup python3 ica_web_monitor.py > monitor.log 2>&1 &
+    cd $TARGET_DIR && nohup python3 src/tools/skills/ica_mcp_router.py >> mcp_router.log 2>&1 & nohup python3 ica_web_monitor.py >> monitor.log 2>&1 &
 "
 
 # 4. Tamper-Proofing (Append-Only) bekapcsolása a logokra (Opcionális: NOPASSWD sudo esetén)

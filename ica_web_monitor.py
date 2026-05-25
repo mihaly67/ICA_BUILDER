@@ -3,6 +3,12 @@ import sqlite3
 import json
 import os
 import time
+import uuid
+import logging
+
+# Globális logging inicializálás az információ-szivárgás elkerülésére
+if not logging.getLogger().handlers:
+    logging.basicConfig(filename='monitor_errors.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = Flask(__name__)
 
@@ -526,13 +532,22 @@ def index():
 
 @app.route('/api/data')
 def get_data():
-    # 1. Statisztikák lekérése
+    import html
+
+    # 1. Alapértelmezett kimeneti változók (biztonságos inicializálás)
     stats = {"total": 0, "avg_time": 0, "error_rate": 0}
     telemetry_rows = []
+    guardrails_html = "Nincs adat"
+    mcts_latest = {}
+
+    # 2. Közös, egyszeri adatbázis megnyitás (mode=ro)
     if os.path.exists(DB_PATH):
         try:
-            conn = sqlite3.connect(DB_PATH)
+            db_uri = f"file:{DB_PATH}?mode=ro"
+            conn = sqlite3.connect(db_uri, uri=True, timeout=5.0)
             c = conn.cursor()
+
+            # --- Alap statisztikák ---
             c.execute("SELECT COUNT(*), AVG(execution_time_ms) FROM mcp_logs")
             total, avg_time = c.fetchone()
             c.execute("SELECT COUNT(*) FROM mcp_logs WHERE status='error'")
@@ -545,7 +560,7 @@ def get_data():
                     "error_rate": (errors / total * 100) if total > 0 else 0
                 }
 
-            # 2. Utolsó 20 hívás lekérése
+            # --- Utolsó hívások ---
             c.execute("SELECT timestamp, tool_name, args, execution_time_ms, status, error_msg FROM mcp_logs ORDER BY id DESC LIMIT 20")
             for r in c.fetchall():
                 ts_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(r[0]))
@@ -555,24 +570,37 @@ def get_data():
                     "args_raw": r[2],
                     "duration": r[3],
                     "status": r[4],
-                    "error": r[5] if r[5] else ""
+                    "error": html.escape(r[5]) if r[5] else ""
                 })
-            # Get latest MCTS data
+
+            # --- MCTS Data ---
             c.execute("SELECT mcts_data FROM mcp_logs WHERE tool_name='deep_planning' AND status='success' AND mcts_data IS NOT NULL ORDER BY id DESC LIMIT 1")
             mcts_row = c.fetchone()
-            mcts_latest = {}
             if mcts_row and mcts_row[0]:
                 try:
                     mcts_latest = json.loads(mcts_row[0])
                 except Exception as ex:
                     mcts_latest = {"name": f"Hiba a JSON parszolásban: {ex}"}
+
+            # --- Guardrails Telemetria ---
+            c.execute("SELECT COUNT(*), SUM(CASE WHEN status='error' THEN 1 ELSE 0 END) FROM mcp_logs WHERE tool_name='write_file_mcp'")
+            write_total, write_errs = c.fetchone()
+            write_errs = write_errs if write_errs else 0
+            write_total = write_total if write_total else 0
+            success_rate = ((write_total - write_errs) / write_total * 100) if write_total > 0 else 100
+            color = "text-success" if success_rate > 90 else ("text-warning" if success_rate > 70 else "text-danger")
+            guardrails_html = f"<div>ADR & AST Validációs Arány: <b class='{color}'>{success_rate:.1f}%</b></div>"
+            guardrails_html += f"<div>Összes fájl írási kísérlet: <b>{write_total}</b></div>"
+            guardrails_html += f"<div>Blokkolt / Hiba: <b class='text-danger'>{write_errs}</b></div>"
+
             conn.close()
         except sqlite3.Error as e:
             mcts_latest = {"name": f"Adatbázis hiba: {e}"}
+            guardrails_html = f"Adatbázis hiba: {e}"
         except Exception as e:
             mcts_latest = {"name": f"Ismeretlen hiba: {e}"}
 
-    # 3. JSONL memória lekérése
+    # 3. JSONL Memória Lekérése
     memory_entries = []
     memory_stats = {"lines": 0, "size_kb": 0}
     if os.path.exists(MEMORY_PATH):
@@ -584,30 +612,15 @@ def get_data():
                 memory_stats["size_kb"] = round(size_kb, 2)
                 for line in reversed(lines[-15:]):  # Utolsó 15 bejegyzés, legújabb elöl
                     try:
-                        memory_entries.append(json.loads(line))
+                        mem_obj = json.loads(line)
+                        if 'content' in mem_obj:
+                            mem_obj['content'] = html.escape(mem_obj['content'])
+                        memory_entries.append(mem_obj)
                     except:
                         pass
         except Exception as e:
-            print("Memory hiba:", e)
-
-    # Kognitív Pipeline Adatok (Guardrails, Blueprint, Önreflexió)
-    guardrails_html = ""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        c_new = conn.cursor()
-        # Guardrails telemetria olvasása
-        c_new.execute("SELECT COUNT(*), SUM(CASE WHEN status='error' THEN 1 ELSE 0 END) FROM mcp_logs WHERE tool_name='write_file_mcp'")
-        write_total, write_errs = c_new.fetchone()
-        write_errs = write_errs if write_errs else 0
-        write_total = write_total if write_total else 0
-        success_rate = ((write_total - write_errs) / write_total * 100) if write_total > 0 else 100
-        color = "text-success" if success_rate > 90 else ("text-warning" if success_rate > 70 else "text-danger")
-        guardrails_html = f"<div>ADR & AST Validációs Arány: <b class='{color}'>{success_rate:.1f}%</b></div>"
-        guardrails_html += f"<div>Összes fájl írási kísérlet: <b>{write_total}</b></div>"
-        guardrails_html += f"<div>Blokkolt / Hiba: <b class='text-danger'>{write_errs}</b></div>"
-        conn.close()
-    except Exception as e:
-        guardrails_html = f"Hiba: {e}"
+            err_id = str(uuid.uuid4())[:8]
+            logging.error(f"Error [{err_id}] in Memory parsing: {e}", exc_info=True)
 
     blueprint_html = ""
     bp_path = "/home/misi/Jules_ICA_Builder/blueprint.md"
@@ -631,14 +644,6 @@ def get_data():
     except Exception as e:
         blueprint_html = f"Hiba: {e}"
 
-    # Hibakezeléshez szükséges Correlation ID generátor
-    import uuid
-    import logging
-
-    # Ha nincs még beállítva a logging
-    if not logging.getLogger().handlers:
-        logging.basicConfig(filename='monitor_errors.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
-
     reflection_html = ""
     try:
         # A teljes memóriát átnézzük visszafelé, hogy MÁR NE vesszen el a 15-ös korlát miatt
@@ -650,8 +655,8 @@ def get_data():
                         mem_obj = json.loads(line)
                         if mem_obj.get('category') in ['Context_Summary', 'Reflection', 'Architecture_Pipeline_Update', 'Guardrail_Block']:
                             ts = mem_obj.get('timestamp', '')
-                            cat = mem_obj.get('category', '')
-                            cont = mem_obj.get('content', '')
+                            cat = html.escape(mem_obj.get('category', ''))
+                            cont = html.escape(mem_obj.get('content', ''))
                             reflection_html = f"<span class='text-secondary'>[{ts}]</span> <b class='text-danger'>[{cat}]</b><br><i style='color: #e2e8f0;'>\"{cont}\"</i>"
                             break  # Megtaláltuk a legutolsót
                     except:
@@ -682,15 +687,15 @@ def get_data():
         system_health_str = f"Rendszerállapot lekérdezés sikertelen. ID: Err-{err_id}"
 
     inbox_str = ""
-    inbox_dir = "/home/misi/Jules_mx/temp/inbox"
+    inbox_dir = "/home/misi/Jules_ICA_Builder/inbox"
     try:
         if os.path.exists(inbox_dir):
             files = [f for f in os.listdir(inbox_dir) if f.startswith("msg_") and f.endswith(".txt")]
             if files:
                 for f in files:
                     filepath = os.path.join(inbox_dir, f)
-                    with open(filepath, 'r') as file:
-                        inbox_str += f"[{f}]: {file.read()[:50]}...\n"
+                    with open(filepath, 'r', encoding='utf-8') as file:
+                        inbox_str += f"[{f}]: {html.escape(file.read()[:50])}...\n"
             else:
                 inbox_str = "Nincsenek várakozó Swarm üzenetek."
         else:
@@ -704,7 +709,8 @@ def get_data():
     GRAPH_DB_PATH = "/home/misi/Jules_ICA_Builder/ica_knowledge_graph.db"
     if os.path.exists(GRAPH_DB_PATH):
         try:
-            conn_g = sqlite3.connect(GRAPH_DB_PATH)
+            db_uri_graph = f"file:{GRAPH_DB_PATH}?mode=ro"
+            conn_g = sqlite3.connect(db_uri_graph, uri=True, timeout=5.0)
             cg = conn_g.cursor()
             cg.execute("SELECT id, name, type, description FROM entities")
             for r in cg.fetchall():

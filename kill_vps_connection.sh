@@ -15,6 +15,11 @@ pkill -f "sshpass" || true
 pkill -f "scp.*$VPS_IP" || true
 pkill -f "rsync.*$VPS_IP" || true
 
+# BIZTONSÁGI PLUSZ: Multiplexelt SSH socket fájlok megsemmisítése
+echo "🧹 Beragadt SSH socket fájlok törlése..."
+rm -f ~/.ssh/cm-* 2>/dev/null || true
+rm -rf ~/.ssh/sockets/* 2>/dev/null || true
+
 # 2. Hálózati elszigetelés (Iptables Reject szabály ideiglenesen)
 echo "🛡️ Hálózati útválasztás blokkolása a VPS felé..."
 if command -v iptables &> /dev/null; then
