@@ -69,26 +69,24 @@ async def run_builder_client(tool_name, args_dict):
     server_params = StdioServerParameters(
         command="ssh",
         args=[
-            "-o", "StrictHostKeyChecking=no",
+            "-o", "BatchMode=yes",
+            "-o", "StrictHostKeyChecking=accept-new",
             f"misi@{os.environ.get('VPS_HOST', '5.189.163.88')}",
-            "/home/misi/Jules_ICA_Builder/venv/bin/python3",
-            "/home/misi/Jules_ICA_Builder/tools/skills/vps_mcp_server.py"
+            "/usr/bin/python3",
+            "/home/misi/Jules_ICA_Builder/src/tools/skills/ica_mcp_router.py"
         ],
         env=os.environ.copy()
     )
 
-    if os.environ.get("VPS_PWD"):
-        if shutil.which("sshpass"):
-            server_params.command = "sshpass"
-            server_params.args = ["-p", os.environ.get("VPS_PWD"), "ssh"] + server_params.args
-        else:
-            print("⚠️ sshpass nem található, a jelszavas belépés nem fog működni! Próbálj kulcsot beállítani.", file=sys.stderr)
-
-    elif os.environ.get("VPS_SSH_KEY"):
+    if os.environ.get("VPS_SSH_KEY"):
         with open("temp_mcp_key", "w") as f:
             f.write(os.environ.get("VPS_SSH_KEY") + "\n")
         os.chmod("temp_mcp_key", 0o600)
         server_params.args = ["-i", "temp_mcp_key"] + server_params.args
+    else:
+        # A StrictHostKeyChecking és BatchMode=yes kikényszeríti az ssh-agent vagy kulcs meglétét,
+        # különben azonnal elutasítja a csatlakozást. Nincs jelszó-prompt!
+        pass
 
     print(f"🛡️ Csatlakozás a VPS MCP Szerverhez (BUILDER MÓD)...", file=sys.stderr)
 

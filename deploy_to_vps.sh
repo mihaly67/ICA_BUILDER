@@ -55,8 +55,8 @@ ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_IP" 
 
 # 2. Lokális Hash-Pinning (Manifest generálása)
 echo "🧮 Kód integritás (SHA256 Manifest) generálása..."
-# Csak a Python fájlokat ellenőrizzük az integritáshoz, mivel a logok és adatbázisok változnak
-find . -name "*.py" -not -path "*/__pycache__/*" -exec sha256sum {} + > manifest.sha256
+# Csak a ténylegesen települő Python fájlokat ellenőrizzük az integritáshoz
+find . -name "*.py" -not -path "*/__pycache__/*" -not -name "temp_*.py" -not -name "patch_*.py" -not -name "test_cli*.py" -not -name "fix_*.py" -exec sha256sum {} + > manifest.sha256
 
 # 3. Fájlok átmásolása (rsync)
 echo "📤 Fájlok átvitele (rsync)..."

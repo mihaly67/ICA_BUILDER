@@ -13,7 +13,7 @@ def install_dependencies():
     try:
         # Hozzáadjuk a '--break-system-packages' paramétert ha szükséges újabb pip-nél, vagy sudo-val globálisan.
         # De biztonságosabb simán az aktuális pyenv / virtualenv pipjét használni:
-        subprocess.run([sys.executable, "-m", "pip", "install", "mcp", "paramiko", "python-dotenv", "psutil", "flask", "waitress"], check=True)
+        subprocess.run([sys.executable, "-m", "pip", "install", "mcp", "paramiko", "python-dotenv", "psutil", "flask", "waitress", "beautifulsoup4"], check=True)
         # A telepítőből kikerült az sshpass az új Zero Trust architektúra (public-key hitelesítés) miatt.
         print("✅ Függőségek telepítve.")
     except Exception as e:
