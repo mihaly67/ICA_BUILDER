@@ -30,7 +30,6 @@ def is_path_safe(path_str):
         if not os.path.isabs(clean_path):
             return False
 
-            
         if not clean_path.startswith(BUILDER_JAIL_DIR):
             return False
         return True
@@ -40,7 +39,6 @@ def is_path_safe(path_str):
 def check_security(tool_name, args_dict):
     """Ellenőrzi a kérést a biztonsági szabályok alapján."""
 
-    
     # 1. Fájlműveletek ellenőrzése
     if tool_name in ["read_file", "write_file", "list_files"]:
         path = args_dict.get("filepath") or args_dict.get("path")
@@ -51,17 +49,11 @@ def check_security(tool_name, args_dict):
     elif tool_name == "execute_bash":
         command = args_dict.get("command", "")
 
-            
-    # 2. Bash futtatás ellenőrzése
-    elif tool_name == "execute_bash":
-        command = args_dict.get("command", "")
-        
         # Regex alapú tiltott szó keresés
         match = BANNED_COMMANDS_REGEX.search(command)
         if match:
             return False, f"SECURITY BLOCK: A '{match.group(1)}' parancs használata tiltott a Builder számára!"
 
-            
         if "rm -rf /" in command:
              return False, "SECURITY BLOCK: A gyökérkönyvtár törlése tiltott!"
 
@@ -87,40 +79,23 @@ async def run_builder_client(tool_name, args_dict):
     )
 
     if os.environ.get("VPS_SSH_KEY"):
-        
-    server_params = StdioServerParameters(
-        command="ssh",
-        args=[
-            "-o", "StrictHostKeyChecking=no",
-            f"misi@{os.environ.get('VPS_HOST', '5.189.163.88')}",
-            "/home/misi/Jules_ICA_Builder/venv/bin/python3", 
-            "/home/misi/Jules_ICA_Builder/tools/skills/vps_mcp_server.py"
-        ],
-        env=os.environ.copy()
-    )
-    
-    if os.environ.get("VPS_PWD"):
-        if shutil.which("sshpass"):
-            server_params.command = "sshpass"
-            server_params.args = ["-p", os.environ.get("VPS_PWD"), "ssh"] + server_params.args
-        else:
-            print("⚠️ sshpass nem található, a jelszavas belépés nem fog működni! Próbálj kulcsot beállítani.", file=sys.stderr)
-            
-    elif os.environ.get("VPS_SSH_KEY"):
         with open("temp_mcp_key", "w") as f:
             f.write(os.environ.get("VPS_SSH_KEY") + "\n")
         os.chmod("temp_mcp_key", 0o600)
         server_params.args = ["-i", "temp_mcp_key"] + server_params.args
-    else:
-        # A StrictHostKeyChecking és BatchMode=yes kikényszeríti az ssh-agent vagy kulcs meglétét,
-        # különben azonnal elutasítja a csatlakozást. Nincs jelszó-prompt!
-        pass
+    elif os.environ.get("VPS_PWD"):
+        if shutil.which("sshpass"):
+            server_params.command = "sshpass"
+            # Kivegyük a BatchMode=yes -t, hogy a jelszavas belépés menjen
+            args_clean = [a for a in server_params.args if a != "BatchMode=yes" and a != "-o"]
+            # De a StrictHostKeyChecking=accept-new maradjon
+            server_params.args = ["-p", os.environ.get("VPS_PWD"), "ssh", "-o", "StrictHostKeyChecking=accept-new", f"misi@{os.environ.get('VPS_HOST', '5.189.163.88')}", "/usr/bin/python3", "/home/misi/Jules_ICA_Builder/src/tools/skills/ica_mcp_router.py"]
+            print("⚠️ (Fallback) sshpass használata a VPS belépéshez. Javasolt a jelszómentes kulcs használata!", file=sys.stderr)
+        else:
+            pass
 
     print(f"🛡️ Csatlakozás a VPS MCP Szerverhez (BUILDER MÓD)...", file=sys.stderr)
 
-
-    print(f"🛡️ Csatlakozás a VPS MCP Szerverhez (BUILDER MÓD)...", file=sys.stderr)
-    
     try:
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -129,10 +104,6 @@ async def run_builder_client(tool_name, args_dict):
                 # Meghívjuk a toolt
                 result = await session.call_tool(tool_name, arguments=args_dict)
 
-                
-                # Meghívjuk a toolt
-                result = await session.call_tool(tool_name, arguments=args_dict)
-                
                 outputs = []
                 if hasattr(result, "content"):
                     for content in result.content:
@@ -148,7 +119,6 @@ if __name__ == "__main__":
     parser.add_argument("--tool", type=str, required=True, help="Az MCP tool neve")
     parser.add_argument("--args", type=str, required=True, help="JSON argumentumok")
 
-    
     args = parser.parse_args()
     try:
         args_dict = json.loads(args.args)
@@ -156,7 +126,6 @@ if __name__ == "__main__":
         print(f"Érvénytelen JSON argumentum: {e}")
         sys.exit(1)
 
-        
     try:
         result = asyncio.run(run_builder_client(args.tool, args_dict))
         print(result)
