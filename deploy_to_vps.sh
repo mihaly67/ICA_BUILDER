@@ -75,9 +75,6 @@ rsync -avz -e "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new" \
 # 4. Systemd Service beállítása és újraindítás a VPS-en
 echo "🔄 Állapotalapú szolgáltatás (Systemd) konfigurálása és újraindítása..."
 ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_IP" "
-    # XDG beállítása a non-interactive ssh systemctl hívásokhoz
-    export XDG_RUNTIME_DIR=/run/user/\$(id -u)
-
     # Linger bekapcsolása, hogy a user service-k fussanak kijelentkezés után is
     loginctl enable-linger \$USER || true
 
@@ -154,8 +151,6 @@ SVC
 # 5. Pre-flight Check, Tamper-Proofing és Indítás (Állapotgép)
 echo "🔒 Integritás ellenőrzése és Szolgáltatások (Systemd) indítása..."
 ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_IP" "
-    export XDG_RUNTIME_DIR=/run/user/\$(id -u)
-
     # Pre-flight check
     if [ ! -d \"$TARGET_DIR\" ]; then
         echo '❌ Hiba: A TARGET_DIR nem létezik a VPS-en. Deploy megszakítva.'
@@ -185,8 +180,6 @@ ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_IP" 
 echo "🩺 Healthcheck (Állapotellenőrzés) futtatása a szolgáltatásokon..."
 sleep 3 # Várunk, hogy a Waitress és a Router elinduljon
 ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_IP" "
-    export XDG_RUNTIME_DIR=/run/user/\$(id -u)
-
     if curl -s http://127.0.0.1:8080/api/data | grep -q '\"stats\"'; then
         echo ' - ✅ Web Monitor sikeresen válaszol (HTTP 200) és aktív.'
     else
