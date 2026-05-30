@@ -23,7 +23,7 @@ last_cpu_percent = 0.0
 app = Flask(__name__)
 
 DB_PATH = "/home/misi/Jules_ICA_Builder/mcp_telemetry.db"
-MEMORY_PATH = "/home/misi/Jules_ICA_Builder/agent_memory.jsonl"
+MEMORY_PATH = "/home/misi/Jules_ICA_Builder/Knowledge_Base/agent_memory.jsonl"
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
