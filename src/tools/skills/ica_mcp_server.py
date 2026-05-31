@@ -150,7 +150,7 @@ def search_rag_labels(query: str) -> str:
 
 
 @mcp.tool()
-def execute_bash(command: str) -> str:
+def execute_bash(command: str, justification: str = "") -> str:
     import ica_guardrails_mcp
     is_safe, safe_command = ica_guardrails_mcp.sanitize_bash_command(command)
     if not is_safe:
@@ -233,7 +233,7 @@ async def git_commit_and_push(repo_path: str, commit_message: str, branch: str =
         return f"Git hiba: {e.stderr} {e.stdout}"
 
 @mcp.tool()
-async def write_file_mcp(filepath: str, content: str) -> str:
+async def write_file_mcp(filepath: str, content: str, justification: str = "") -> str:
     """
     Fájl írása vagy felülírása a VPS-en.
     PIPELINE GATE: Csak akkor ír, ha van blueprint.md ami tartalmazza a HIVATALOS ADR struktúrát!
