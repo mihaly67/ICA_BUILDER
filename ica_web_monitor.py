@@ -425,14 +425,32 @@ HTML_TEMPLATE = """
 
         // D3 requires "source" and "target" to be object references or ids
         // We map SQLite edge references (source_id, target_id) to the node objects
-        const d3Nodes = nodes.map(d => Object.create(d));
-        const d3Edges = edges.map(d => {
+
+        const repoFilter = document.getElementById("repoFilter").value;
+
+        let filteredNodes = nodes;
+        let filteredEdges = edges;
+
+        if (repoFilter !== "ALL") {
+            filteredNodes = nodes.filter(d =>
+                (d.description && d.description.toLowerCase().includes(repoFilter.toLowerCase())) ||
+                (d.name && d.name.toLowerCase().includes(repoFilter.toLowerCase())) ||
+                d.name === "XRDP_Snap_cgroup_Bug" || d.name === "XRDP_XFCE_Crash_Fix" || d.name === "Munchhausen_Zero_Trust"
+            );
+
+            const nodeIds = new Set(filteredNodes.map(d => d.id));
+            filteredEdges = edges.filter(d => nodeIds.has(d.source_id) && nodeIds.has(d.target_id));
+        }
+
+        const d3Nodes = filteredNodes.map(d => Object.create(d));
+        const d3Edges = filteredEdges.map(d => {
             return {
                 source: d.source_id,
                 target: d.target_id,
                 relationship: d.relationship
             };
         });
+
 
         if (graphSimulation) graphSimulation.stop();
 
@@ -528,7 +546,21 @@ HTML_TEMPLATE = """
         }
     }
 
+
+    document.getElementById("repoFilter").addEventListener("change", () => {
+        // Amikor változik a szűrő, azonnal rajzolja újra a dashboardot (nem kell várni 1 mp-t)
+        updateDashboard();
+    });
+
+
+    document.getElementById("repoFilter").addEventListener("change", () => {
+        // Amikor változik a szűrő, azonnal rajzolja újra a dashboardot (nem kell várni 1 mp-t)
+        updateDashboard();
+    });
+
     // Frissítés másodpercenként
+
+
     setInterval(updateDashboard, 1000);
     updateDashboard();
 </script>
