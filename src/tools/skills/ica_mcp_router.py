@@ -16,6 +16,27 @@ import ica_telemetry
 
 
 
+
+def cognitive_preflight_check(func_name, kwargs):
+    """
+    Fizikai kényszerítő kapu (Pipeline Gate) a rendszerműködtetéshez.
+    Bizonyos kritikus MCP eszközök (pl. fájlírás) hívásakor az LLM-nek
+    bizonyítania kell, hogy reflektált a szabályokra.
+    """
+    critical_tools = ["write_file_mcp", "execute_bash"]
+    if func_name in critical_tools:
+        # Ha a tool megengedi a 'justification' vagy 'reasoning' mezőt
+        justification = kwargs.get("justification", kwargs.get("reasoning", ""))
+
+        if not justification or len(str(justification)) < 20:
+            raise ValueError(f"Cognitive Pre-flight Check ELBUKOTT! A '{func_name}' eszköz használatához "
+                             f"kötelező megadni egy részletes 'justification' vagy 'reasoning' paramétert (>20 karakter), "
+                             f"amelyben megindokolod, hogy a lépés hogyan illeszkedik az AGENTS_ICA.md és a Zero Trust szabályrendszerbe.")
+
+        # Ide jöhetne később akár egy LLM alapú (pl. Ollama) validáció is a megadott reasoning-re,
+        # de a "Münchhausen" problémát elkerülendő, már maga a strukturális kényszerítés (hogy ki kell tölteni) is rákényszeríti az Agentet a System 2 gondolkodásra.
+
+
 def add_tool_with_telemetry(func):
     # Ezzel elkerüljük az async paraméter-vizsgálat (signature) problémákat,
     # de egyelőre a legegyszerűbb, ha beállítjuk a wrapperre az eredeti signaturat
@@ -23,6 +44,25 @@ def add_tool_with_telemetry(func):
     @functools.wraps(func)
     async def async_wrapped(*args, **kwargs):
         start = time.time()
+
+        try:
+            cognitive_preflight_check(func.__name__, kwargs)
+        except Exception as preflight_err:
+            exec_time = (time.time() - start) * 1000
+            ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "error", str(preflight_err))
+
+            # Kényszerített Reflexió (Auto-Critique)
+            try:
+                import json
+                import datetime
+                err_msg = str(preflight_err).replace('"', "'")
+                critique = f"Auto-Reflexió (Pre-flight): {err_msg}. Elfelejtettem a rendszerműködtetési kereteket igazolni!"
+                with open("/home/misi/Jules_ICA_Builder/agent_memory.jsonl", "a") as mem_f:
+                    mem_f.write(json.dumps({"timestamp": datetime.datetime.now().isoformat(), "category": "Reflection", "content": critique}) + "\n")
+            except:
+                pass
+            raise preflight_err
+
         try:
             res = await func(*args, **kwargs)
             exec_time = (time.time() - start) * 1000
@@ -59,6 +99,25 @@ def add_tool_with_telemetry(func):
     @functools.wraps(func)
     def sync_wrapped(*args, **kwargs):
         start = time.time()
+
+        try:
+            cognitive_preflight_check(func.__name__, kwargs)
+        except Exception as preflight_err:
+            exec_time = (time.time() - start) * 1000
+            ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "error", str(preflight_err))
+
+            # Kényszerített Reflexió (Auto-Critique)
+            try:
+                import json
+                import datetime
+                err_msg = str(preflight_err).replace('"', "'")
+                critique = f"Auto-Reflexió (Pre-flight): {err_msg}. Elfelejtettem a rendszerműködtetési kereteket igazolni!"
+                with open("/home/misi/Jules_ICA_Builder/agent_memory.jsonl", "a") as mem_f:
+                    mem_f.write(json.dumps({"timestamp": datetime.datetime.now().isoformat(), "category": "Reflection", "content": critique}) + "\n")
+            except:
+                pass
+            raise preflight_err
+
         try:
             res = func(*args, **kwargs)
             exec_time = (time.time() - start) * 1000
