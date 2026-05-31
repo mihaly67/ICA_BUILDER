@@ -162,6 +162,16 @@ HTML_TEMPLATE = """
                     <span>🕸️ ICA Tudásgráf (Knowledge Graph)</span>
                     <span id="graph-stats" class="badge bg-dark">Betöltés...</span>
                 </div>
+
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Knowledge Graph (Tudásgráf)</span>
+                    <select id="repoFilter" class="form-select form-select-sm w-auto bg-dark text-white border-secondary">
+                        <option value="ALL">Összes Repo mutatása</option>
+                        <option value="Builder">ICA Builder (Core)</option>
+                        <option value="video">Video Downloader</option>
+                        <option value="MQL5">MQL5 Trading</option>
+                    </select>
+                </div>
                 <div class="card-body" style="background-color: #0d1117; position: relative;">
                     <div id="kg-graph" style="width: 100%; height: 600px; overflow: hidden;"></div>
                 </div>
@@ -426,7 +436,8 @@ HTML_TEMPLATE = """
         // D3 requires "source" and "target" to be object references or ids
         // We map SQLite edge references (source_id, target_id) to the node objects
 
-        const repoFilter = document.getElementById("repoFilter").value;
+        const repoFilterEl = document.getElementById("repoFilter");
+        const repoFilter = repoFilterEl ? repoFilterEl.value : "ALL";
 
         let filteredNodes = nodes;
         let filteredEdges = edges;
@@ -547,18 +558,19 @@ HTML_TEMPLATE = """
     }
 
 
-    document.getElementById("repoFilter").addEventListener("change", () => {
-        // Amikor változik a szűrő, azonnal rajzolja újra a dashboardot (nem kell várni 1 mp-t)
-        updateDashboard();
-    });
 
 
-    document.getElementById("repoFilter").addEventListener("change", () => {
-        // Amikor változik a szűrő, azonnal rajzolja újra a dashboardot (nem kell várni 1 mp-t)
-        updateDashboard();
-    });
+
+
+    const filterEl = document.getElementById("repoFilter");
+    if (filterEl) {
+        filterEl.addEventListener("change", () => {
+            updateDashboard();
+        });
+    }
 
     // Frissítés másodpercenként
+
 
 
     setInterval(updateDashboard, 1000);
