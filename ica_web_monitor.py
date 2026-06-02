@@ -45,7 +45,7 @@ HTML_TEMPLATE = """
         .status-ok { color: #4ade80; font-weight: bold; }
         .status-err { color: #f87171; font-weight: bold; }
         .memory-box { max-height: 400px; overflow-y: auto; background: #000; padding: 15px; border-radius: 5px; }
-        .log-entry { margin-bottom: 10px; border-bottom: 1px dashed #333; padding-bottom: 5px; }
+        .log-en margin-bottom: 10px; border-bottom: 1px dashed #333; padding-bottom: 5px; }
         .log-time { color: #60a5fa; }
         .log-cat { color: #c084fc; font-weight: bold; }
     </style>
@@ -160,17 +160,13 @@ HTML_TEMPLATE = """
             <div class="card shadow-sm border-warning">
                 <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
                     <span>🕸️ ICA Tudásgráf (Knowledge Graph)</span>
-                    <span id="graph-stats" class="badge bg-dark">Betöltés...</span>
-                </div>
-
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span>Knowledge Graph (Tudásgráf)</span>
-                    <select id="repoFilter" class="form-select form-select-sm w-auto bg-dark text-white border-secondary">
+                    <select id="repoFilter" class="form-select form-select-sm w-auto bg-dark text-white border-secondary mx-2">
                         <option value="ALL">Összes Repo mutatása</option>
                         <option value="Builder">ICA Builder (Core)</option>
                         <option value="video">Video Downloader</option>
                         <option value="MQL5">MQL5 Trading</option>
                     </select>
+                    <span id="graph-stats" class="badge bg-dark">Betöltés...</span>
                 </div>
                 <div class="card-body" style="background-color: #0d1117; position: relative;">
                     <div id="kg-graph" style="width: 100%; height: 600px; overflow: hidden;"></div>
@@ -226,32 +222,39 @@ HTML_TEMPLATE = """
                 // Telemetria tábla
                 const tbody = document.getElementById('telemetry-body');
                 tbody.innerHTML = '';
-                data.telemetry.forEach(row => {
+                data.telemetry.forEach((row, index) => {
                     const statusClass = row.status === 'success' ? 'status-ok' : 'status-err';
                     const statusText = row.status === 'success' ? 'OK' : 'ERR';
                     let toolName = row.tool_name;
-                    let args = row.args_raw;
+                    let args = row.args_raw || '';
 
+                    // Biztonságos JSON feldolgozás null-checkekkel
                     try {
-                        const argsObj = JSON.parse(row.args_raw);
-                        if (toolName === "execute_bash") {
-                            toolName = `<span class="text-info">bash:</span> ${argsObj.command ? argsObj.command.substring(0,40) + '...' : ''}`;
-                            args = '';
-                        } else if (toolName === "write_file_mcp") {
-                            const fp = argsObj.filepath ? argsObj.filepath.split('/').pop() : '';
-                            toolName = `<span class="text-warning">write:</span> ${fp}`;
-                            args = '';
+                        if (args && args.startsWith('{')) {
+                            const argsObj = JSON.parse(args);
+                            if (toolName === execute_bash) {
+                                toolName = '<span class="text-info">bash:</span> ' + (argsObj.command ? argsObj.command.substring(0,40) + '...' : '');
+                                args = '';
+                            } else if (toolName === write_file_mcp) {
+                                const fp = argsObj.filepath ? argsObj.filepath.split('/').pop() : '';
+                                toolName = '<span class="text-warning">write:</span> ' + fp;
+                                args = '';
+                            } else if (toolName === deep_planning) {
+                                toolName = '<span class="badge bg-info text-dark">MCTS System 2</span>';
+                                args = '';
+                            }
                         }
                     } catch(e) {}
 
+                    const safeArgs = args.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
                     const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td>${row.time}</td>
-                        <td>${toolName}</td>
-                        <td class="text-end text-success">${row.duration.toFixed(1)}</td>
-                        <td class="${statusClass} text-center">${statusText}</td>
-                        <td><small class="text-light">${row.error || args.substring(0, 70)}</small></td>
-                    `;
+                    tr.innerHTML = '<td>' + (index + 1) + '</td>' +
+                                   '<td>' + row.time + '</td>' +
+                                   '<td class="font-monospace">' + toolName + '</td>' +
+                                   '<td class="' + statusClass + '">' + statusText + '</td>' +
+                                   '<td>' + parseFloat(row.duration).toFixed(1) + ' ms</td>' +
+                                   '<td class="text-light" style="font-size: 0.85em; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + safeArgs + '</td>';
                     tbody.appendChild(tr);
                 });
 
@@ -435,18 +438,17 @@ HTML_TEMPLATE = """
 
         // D3 requires "source" and "target" to be object references or ids
         // We map SQLite edge references (source_id, target_id) to the node objects
-
-        const repoFilterEl = document.getElementById("repoFilter");
-        const repoFilter = repoFilterEl ? repoFilterEl.value : "ALL";
+        const repoFilterEl = document.getElementById('repoFilter');
+        const repoFilter = repoFilterEl ? repoFilterEl.value : 'ALL';
 
         let filteredNodes = nodes;
         let filteredEdges = edges;
 
-        if (repoFilter !== "ALL") {
+        if (repoFilter !== 'ALL') {
             filteredNodes = nodes.filter(d =>
                 (d.description && d.description.toLowerCase().includes(repoFilter.toLowerCase())) ||
                 (d.name && d.name.toLowerCase().includes(repoFilter.toLowerCase())) ||
-                d.name === "XRDP_Snap_cgroup_Bug" || d.name === "XRDP_XFCE_Crash_Fix" || d.name === "Munchhausen_Zero_Trust"
+                d.name === 'XRDP_Snap_cgroup_Bug' || d.name === 'XRDP_XFCE_Crash_Fix' || d.name === 'Munchhausen_Zero_Trust' || d.type === 'System' || d.type === 'Core'
             );
 
             const nodeIds = new Set(filteredNodes.map(d => d.id));
@@ -461,7 +463,6 @@ HTML_TEMPLATE = """
                 relationship: d.relationship
             };
         });
-
 
         if (graphSimulation) graphSimulation.stop();
 
@@ -557,22 +558,14 @@ HTML_TEMPLATE = """
         }
     }
 
-
-
-
-
-
-    const filterEl = document.getElementById("repoFilter");
+    const filterEl = document.getElementById('repoFilter');
     if (filterEl) {
-        filterEl.addEventListener("change", () => {
+        filterEl.addEventListener('change', () => {
             updateDashboard();
         });
     }
 
     // Frissítés másodpercenként
-
-
-
     setInterval(updateDashboard, 1000);
     updateDashboard();
 </script>
