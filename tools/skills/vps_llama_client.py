@@ -31,11 +31,10 @@ def query_vps_llama(prompt, model="llama3:latest"):
 
     cmd = f"curl -s -X POST http://localhost:11434/api/generate -H 'Content-Type: application/json' -d '{safe_payload}'"
 
-    ssh_cmd = ["sshpass", "-e", "ssh", "-o", "StrictHostKeyChecking=no", f"{VPS_USER}@{VPS_HOST}", cmd]
+    # Zero Trust: Public-Key hitelesítés használata sshpass helyett
+    ssh_cmd = ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", f"{VPS_USER}@{VPS_HOST}", cmd]
 
-    # Környezeti változó beállítása a híváshoz
     env = os.environ.copy()
-    env["SSHPASS"] = VPS_PWD
 
     try:
         result = subprocess.run(ssh_cmd, check=True, capture_output=True, text=True, env=env)
