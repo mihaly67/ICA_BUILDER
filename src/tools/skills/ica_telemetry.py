@@ -3,7 +3,10 @@ import time
 import os
 import json
 
+# Use fallback path if main path is not accessible
 DB_PATH = "/home/misi/Jules_ICA_Builder/mcp_telemetry.db"
+if not os.path.exists(os.path.dirname(DB_PATH)):
+    DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "mcp_telemetry.db")
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)

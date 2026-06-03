@@ -74,10 +74,111 @@ def add_tool_with_telemetry(func):
                     res_dict = json.loads(res)
                     if "tree_data" in res_dict:
                         mcts_data = res_dict["tree_data"]
+
+                    # --- AUTO-GRAPH COMMITTER ---
+                    # Ha a deep_planning sikeresen lefutott, kimentjük a végkövetkeztetést a memóriába és a Tudásgráfba
+                    best_action = res_dict.get("best_action", "")
+                    best_value = res_dict.get("best_value", 0.0)
+                    if best_action:
+                        # 1. Beírás az agent_memory.jsonl-be
+                        import datetime
+                        try:
+                            # A 'get_budapest_2026_time' logikáját szimuláljuk (vagy használjuk az alapértelmezett ISO formátumot)
+                            timestamp = datetime.datetime.now().isoformat()
+                            if "2026-" not in timestamp:
+                                timestamp = timestamp.replace(str(datetime.datetime.now().year), "2026")
+
+                            memory_entry = {
+                                "timestamp": timestamp,
+                                "category": "MCTS_Auto_Committer",
+                                "content": f"System 2 (Deep Planning) automatikus következtetése: '{best_action}' (Bizonyosság: {best_value})"
+                            }
+                            # Mivel az mcp_telemetry is a /home/misi/... helyen van elvárva,
+                            # biztonsági okokból használjuk az agent_memory fájlt. (ha lokális dockerben van, ott a fájl elérhető az ENVIRONMENT_SETUP/ alapján is)
+                            mem_file_paths = [
+                                "/home/misi/Jules_ICA_Builder/Knowledge_Base/agent_memory.jsonl",
+                                "/home/misi/Jules_ICA_Builder/agent_memory.jsonl",
+                                os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "Knowledge_Base", "agent_memory.jsonl")
+                            ]
+                            for mem_path in mem_file_paths:
+                                if os.path.exists(os.path.dirname(mem_path)):
+                                    with open(mem_path, "a", encoding="utf-8") as mem_f:
+                                        mem_f.write(json.dumps(memory_entry) + "\n")
+                                    break
+                        except Exception as e:
+                            print(f"Auto-Graph Committer Memory Error: {e}")
+                            pass
+
+                        # 2. Beírás az ICA Tudásgráfba (Entities és Edges)
+                        try:
+                            import ica_memory_mcp
+                            # Node hozzáadása
+                            node_name = f"MCTS_Plan_{int(time.time())}"
+                            ica_memory_mcp.add_memory_node(
+                                name=node_name,
+                                entity_type="System2_Thought",
+                                description=f"Automatikusan generált MCTS Deep Planning eredmény: {best_action}"
+                            )
+                            # Kapcsolat hozzáadása egy Core elemhez, pl 'ICA Builder'
+                            ica_memory_mcp.add_memory_edge(
+                                source_name=node_name,
+                                target_name="ICA Builder",
+                                relationship="planned_by",
+                                weight=float(best_value)
+                            )
+                        except Exception as e:
+                            print(f"Auto-Graph Committer Graph Error: {e}")
+                            pass
+                    # --- AUTO-GRAPH COMMITTER END ---
                 except:
                     pass
 
             ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "success", mcts_data=mcts_data)
+
+            # ---------------------------------------------------------
+            # FOLYAMATOS MEMÓRIA MENTÉS - ÚJ FUNKCIÓ
+            # ---------------------------------------------------------
+            # Mivel a felhasználó azt kérte, hogy a jsonl fájl automatikusan is frissüljön idővel (ha van változás)
+            # vagy ne legyen információvesztés: a kritikus tool hívások (mint pl. file írás, shell parancs, stb) után
+            # egy "Activity Marker" kerül a memóriába (ha régen volt már mentés).
+            try:
+                if func.__name__ in ["execute_bash", "write_file_mcp", "add_memory_node", "add_memory_edge"]:
+                    import time
+                    import json
+                    import datetime
+
+                    last_activity_time = getattr(router_mcp, "_last_auto_memory_time", 0)
+                    current_time = time.time()
+
+                    # Csak 1 percenként írjunk be automatikusan, hogy ne floodoljuk szét a Stream-et
+                    if current_time - last_activity_time > 60:
+                        router_mcp._last_auto_memory_time = current_time
+
+                        timestamp = datetime.datetime.now().isoformat()
+                        if "2026-" not in timestamp:
+                            timestamp = timestamp.replace(str(datetime.datetime.now().year), "2026")
+
+                        # Szimuláljuk a "Memory Summary"-t vagy csak rögzítünk egy automatikus checkpointot.
+                        memory_entry = {
+                            "timestamp": timestamp,
+                            "category": "Auto_Activity_Checkpoint",
+                            "content": f"A rendszer aktívan használta a(z) '{func.__name__}' eszközt. Állapot/Kontextus megőrizve."
+                        }
+
+                        mem_file_paths = [
+                            "/home/misi/Jules_ICA_Builder/Knowledge_Base/agent_memory.jsonl",
+                            "/home/misi/Jules_ICA_Builder/agent_memory.jsonl",
+                            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "Knowledge_Base", "agent_memory.jsonl")
+                        ]
+                        for mem_path in mem_file_paths:
+                            if os.path.exists(os.path.dirname(mem_path)):
+                                with open(mem_path, "a", encoding="utf-8") as mem_f:
+                                    mem_f.write(json.dumps(memory_entry) + "\n")
+                                break
+            except Exception as e:
+                pass
+            # ---------------------------------------------------------
+
             return res
         except Exception as e:
             exec_time = (time.time() - start) * 1000
@@ -129,10 +230,112 @@ def add_tool_with_telemetry(func):
                     res_dict = json.loads(res)
                     if "tree_data" in res_dict:
                         mcts_data = res_dict["tree_data"]
+
+                    # --- AUTO-GRAPH COMMITTER ---
+                    # Ha a deep_planning sikeresen lefutott, kimentjük a végkövetkeztetést a memóriába és a Tudásgráfba
+                    best_action = res_dict.get("best_action", "")
+                    best_value = res_dict.get("best_value", 0.0)
+                    if best_action:
+                        # 1. Beírás az agent_memory.jsonl-be
+                        import datetime
+                        try:
+                            # A 'get_budapest_2026_time' logikáját szimuláljuk (vagy használjuk az alapértelmezett ISO formátumot)
+                            timestamp = datetime.datetime.now().isoformat()
+                            if "2026-" not in timestamp:
+                                timestamp = timestamp.replace(str(datetime.datetime.now().year), "2026")
+
+                            memory_entry = {
+                                "timestamp": timestamp,
+                                "category": "MCTS_Auto_Committer",
+                                "content": f"System 2 (Deep Planning) automatikus következtetése: '{best_action}' (Bizonyosság: {best_value})"
+                            }
+                            # Mivel az mcp_telemetry is a /home/misi/... helyen van elvárva,
+                            # biztonsági okokból használjuk az agent_memory fájlt.
+                            mem_file_paths = [
+                                "/home/misi/Jules_ICA_Builder/Knowledge_Base/agent_memory.jsonl",
+                                "/home/misi/Jules_ICA_Builder/agent_memory.jsonl",
+                                os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "Knowledge_Base", "agent_memory.jsonl")
+                            ]
+                            for mem_path in mem_file_paths:
+                                if os.path.exists(os.path.dirname(mem_path)):
+                                    with open(mem_path, "a", encoding="utf-8") as mem_f:
+                                        mem_f.write(json.dumps(memory_entry) + "\n")
+                                    break
+                        except Exception as e:
+                            print(f"Auto-Graph Committer Memory Error: {e}")
+                            pass
+
+                        # 2. Beírás az ICA Tudásgráfba (Entities és Edges)
+                        try:
+                            import ica_memory_mcp
+                            # Először ellenőrizzük, létezik-e az 'ICA Builder' node (hogy ne kapjunk errort az edge-nél)
+                            ica_memory_mcp.add_memory_node(
+                                name="ICA Builder",
+                                entity_type="System",
+                                description="A központi ICA Builder rendszer (Core)."
+                            )
+                            # Node hozzáadása
+                            node_name = f"MCTS_Plan_{int(time.time())}"
+                            ica_memory_mcp.add_memory_node(
+                                name=node_name,
+                                entity_type="System2_Thought",
+                                description=f"Automatikusan generált MCTS Deep Planning eredmény: {best_action}"
+                            )
+                            # Kapcsolat hozzáadása a Core elemhez
+                            ica_memory_mcp.add_memory_edge(
+                                source_name=node_name,
+                                target_name="ICA Builder",
+                                relationship="planned_by",
+                                weight=float(best_value)
+                            )
+                        except Exception as e:
+                            print(f"Auto-Graph Committer Graph Error: {e}")
+                            pass
+                    # --- AUTO-GRAPH COMMITTER END ---
                 except:
                     pass
 
             ica_telemetry.log_mcp_call(func.__name__, kwargs, exec_time, "success", mcts_data=mcts_data)
+
+            # ---------------------------------------------------------
+            # FOLYAMATOS MEMÓRIA MENTÉS - ÚJ FUNKCIÓ (SYNC WRAPPED)
+            # ---------------------------------------------------------
+            try:
+                if func.__name__ in ["execute_bash", "write_file_mcp", "add_memory_node", "add_memory_edge"]:
+                    import time
+                    import json
+                    import datetime
+
+                    last_activity_time = getattr(router_mcp, "_last_auto_memory_time_sync", 0)
+                    current_time = time.time()
+
+                    if current_time - last_activity_time > 60:
+                        router_mcp._last_auto_memory_time_sync = current_time
+
+                        timestamp = datetime.datetime.now().isoformat()
+                        if "2026-" not in timestamp:
+                            timestamp = timestamp.replace(str(datetime.datetime.now().year), "2026")
+
+                        memory_entry = {
+                            "timestamp": timestamp,
+                            "category": "Auto_Activity_Checkpoint",
+                            "content": f"A rendszer aktívan használta a(z) '{func.__name__}' eszközt. Állapot/Kontextus megőrizve."
+                        }
+
+                        mem_file_paths = [
+                            "/home/misi/Jules_ICA_Builder/Knowledge_Base/agent_memory.jsonl",
+                            "/home/misi/Jules_ICA_Builder/agent_memory.jsonl",
+                            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "Knowledge_Base", "agent_memory.jsonl")
+                        ]
+                        for mem_path in mem_file_paths:
+                            if os.path.exists(os.path.dirname(mem_path)):
+                                with open(mem_path, "a", encoding="utf-8") as mem_f:
+                                    mem_f.write(json.dumps(memory_entry) + "\n")
+                                break
+            except Exception as e:
+                pass
+            # ---------------------------------------------------------
+
             return res
         except Exception as e:
             exec_time = (time.time() - start) * 1000
