@@ -165,6 +165,8 @@ HTML_TEMPLATE = """
                         <option value="Builder">ICA Builder (Core)</option>
                         <option value="video">Video Downloader</option>
                         <option value="MQL5">MQL5 Trading</option>
+                        <option value="restoration">Kép/Videó Restauráló</option>
+                        <option value="mx">MX Linux Fejlesztő</option>
                     </select>
                     <span id="graph-stats" class="badge bg-dark">Betöltés...</span>
                 </div>
@@ -448,6 +450,8 @@ HTML_TEMPLATE = """
             filteredNodes = nodes.filter(d =>
                 (d.description && d.description.toLowerCase().includes(repoFilter.toLowerCase())) ||
                 (d.name && d.name.toLowerCase().includes(repoFilter.toLowerCase())) ||
+                (repoFilter === 'restoration' && (d.description && d.description.toLowerCase().includes('restore'))) ||
+                (repoFilter === 'mx' && (d.description && d.description.toLowerCase().includes('linux'))) ||
                 d.name === 'XRDP_Snap_cgroup_Bug' || d.name === 'XRDP_XFCE_Crash_Fix' || d.name === 'Munchhausen_Zero_Trust' || d.type === 'System' || d.type === 'Core'
             );
 
