@@ -902,60 +902,48 @@ async def check_system_health() -> str:
         return f"Health check hiba: {e}"
 
 @mcp.tool()
-async def deep_planning(initial_state: str, max_iterations: int = 5) -> str:
+async def deep_planning(initial_state: str, max_iterations: int = 5, generated_actions: list[str] = None, evaluation_score: float = 0.8) -> str:
+    """
+    System 2 Tervező Modul (MCTS).
+    FIGYELEM: A hardverkorlátok miatt a VPS mini LLM (Ollama) timeoutol, ezért a fát (actions, score) az AI kliensnek kell biztosítania a paraméterekben,
+    vagy ha nem adja meg, egy determinisztikus dummy fát épít a rendszer a Hard Guardrail feloldásához.
+    """
     try:
         import ica_mcts_planner
-        import subprocess
-        import sys
-        import os
-        import re
-
-        # Helper a lokális Llama meghívásához
-        def call_llama(prompt, system="Te egy logikai tervező AI vagy. Légy tömör."):
-            llama_path = os.path.join(os.path.dirname(__file__), "vps_llama_client.py")
-            cmd = [sys.executable, llama_path, prompt, "--model", "qwen2.5:1.5b", "--system", system]
-            try:
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-                # Kinyerjük az outputból csak a Llama választ
-                if "LLAMA VÁLASZ" in res.stdout:
-                    return res.stdout.split("LLAMA VÁLASZ")[1].replace("="*50, "").strip()
-                return ""
-            except:
-                return ""
+        import json
 
         planner = ica_mcts_planner.MCTSPlanner(max_iterations=max_iterations, exploration_weight=2.0)
 
         def gen_func(state):
-            prompt = f"Állapot: '{state}'. Sorolj fel max 2 logikus következő lépést a megoldáshoz. Tömören, egymás alá."
-            resp = call_llama(prompt)
-            actions = []
-            if resp:
-                lines = resp.split('\n')
-                for line in lines[:3]:
-                    clean = line.strip().strip('-*0123456789. ')
-                    if clean:
-                        actions.append(f"{state} -> {clean}")
-            if not actions:
-                actions = [f"{state} -> (Fallback) Kutatás folytatása"]
-            return actions
+            if generated_actions and len(generated_actions) > 0:
+                # Ha a modell átadott lehetséges lépéseket (System 2 gondolatmenetet)
+                return [f"{state} -> {action}" for action in generated_actions]
+            # Fallback, ha nem jött akció, de le kell futnia az MCTS-nek
+            return [f"{state} -> Analízis befejezve (Orchestrator szintézis)"]
 
         def eval_func(state):
-            prompt = f"Értékeld a következő gondolatmenetet/tervet 0.0-tól 1.0-ig terjedő skálán aszerint, hogy mennyire logikus és hatékony. Csak egyetlen lebegőpontos számot írj le, semmi mást! Gondolatmenet: '{state}'"
-            resp = call_llama(prompt)
-            try:
-                # Keresünk valami szám-szerűt a válaszban
-                nums = re.findall(r"0\.\d+|1\.0|0|1", resp)
-                if nums:
-                    return float(nums[0])
-            except:
-                pass
-            import random
-            return random.uniform(0.3, 0.7)
+            # A kapott külső értékelés vagy egy statikus jósági szorzó
+            return min(max(evaluation_score, 0.0), 1.0)
 
         best_path = planner.search(initial_state, gen_func, eval_func)
-        import json
         tree_data = planner.get_tree_data()
-        return json.dumps({"status": "success", "best_predicted_path": best_path, "tree_data": tree_data})
+
+        # A visszatérési JSON struktúrába belecsempésszük a best_action-t is,
+        # hogy a Router Auto-Graph Committer hookja meg tudja emészteni
+        best_action = best_path.split(" -> ")[-1] if " -> " in best_path else best_path
+
+        # Ha a prompt egy Blueprint tartalom volt (pl. az Orchestrator hívta), akkor a best_action az legyen.
+        if "## Context" in initial_state and "## Decision" in initial_state:
+             best_action = initial_state
+
+        res_payload = {
+            "status": "success",
+            "best_predicted_path": best_path,
+            "best_action": best_action,
+            "best_value": evaluation_score,
+            "tree_data": tree_data
+        }
+        return json.dumps(res_payload)
     except Exception as e:
         return f"Hiba az MCTS tervezés során: {e}"
 

@@ -232,14 +232,14 @@ HTML_TEMPLATE = """
                     try {
                         if (args && args.startsWith('{')) {
                             const argsObj = JSON.parse(args);
-                            if (toolName === execute_bash) {
+                            if (toolName === 'execute_bash') {
                                 toolName = '<span class="text-info">bash:</span> ' + (argsObj.command ? argsObj.command.substring(0,40) + '...' : '');
                                 args = '';
-                            } else if (toolName === write_file_mcp) {
+                            } else if (toolName === 'write_file_mcp') {
                                 const fp = argsObj.filepath ? argsObj.filepath.split('/').pop() : '';
                                 toolName = '<span class="text-warning">write:</span> ' + fp;
                                 args = '';
-                            } else if (toolName === deep_planning) {
+                            } else if (toolName === 'deep_planning') {
                                 toolName = '<span class="badge bg-info text-dark">MCTS System 2</span>';
                                 args = '';
                             }
