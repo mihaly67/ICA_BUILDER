@@ -31,14 +31,14 @@ mcp = FastMCP("Jules-ICA-Cognitive-Engine")
 
 RAG_DATABASES = {
     "Chatbot": "/home/misi/Rag_epites, chatbot_csv_data_llm_RAG/RAG_CHATBOT_CSV_DATA_LLM_github.db",
-    "BRAIN2": "/home/misi/BRAIN2_DEV_RAG/brain2_dev_knowledge.db",
-    "Gerilla": "/home/misi/Gerilla_RAG/GERILLA_RAG_knowledge.db",
-    "MX_Linux": "/home/misi/MX_LINUX_RAG/MX_LINUX_knowledge.db",
-    "MQL5_Articles": "/home/misi/Jules cikk és fájl letöltés_RAG/RAG_MQL5_ARTICLES_github.db",
-    "MQL5_Theory": "/home/misi/MQL5_Theory_RAG/RAG_MQL5_THEORY_knowledge.db",
+    "BRAIN2": "/home/misi/BRAIN2_DEV_RAG/brain2_knowledge.db",
+    "Gerilla": "/home/misi/Gerilla_RAG/Gerilla_RAG.db",
+    "MX_Linux": "/home/misi/MX_LINUX_RAG/mx_linux_knowledge.db",
+    "MQL5_Articles": "/home/misi/MQL5_Theory_RAG/mql5_articles*.db",
+    "MQL5_Theory": "/home/misi/MQL5_Theory_RAG/mql5_native_knowledge*.db",
     "Jules_ICA_Builder": "/home/misi/Jules_ICA_Builder/agent_memory.jsonl",
-    "VideoDownloader": "/home/misi/video_downloader_RAG/VIDEO_DOWNLOADER_knowledge.db",
-    "VideoRestaurator": "/home/misi/kep_video_restauralo_RAG/RESTORE_knowledge.db"
+    "VideoDownloader": "/home/misi/video_downloader_RAG/video_downloader_RAG.db",
+    "VideoRestaurator": "/home/misi/video_picture_restoration_RAG/video_picture_restoration_knowledge.db"
 }
 
 MEMORY_REGISTER_FILE = os.path.expanduser("~/Jules_ICA_Builder/agent_register.jsonl")
@@ -681,9 +681,16 @@ async def search_rag_database(rag_name: str, keyword: str, limit: int = 3) -> st
 
         if db_path.endswith('.jsonl'):
             python_code = f"""
-import json
+import json, os, glob
 try:
-    with open('{db_path}', 'r', encoding='utf-8') as f:
+    target_path = '{db_path}'
+    if '*' in target_path:
+        files = glob.glob(target_path)
+        if not files:
+            raise Exception("Nem talalhato fajl a megadott mintaval.")
+        target_path = max(files, key=os.path.getmtime)
+
+    with open(target_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
     res = []
     for l in reversed(lines):
@@ -697,9 +704,16 @@ except Exception as e:
         else:
             # SQLite logika proxy
             python_code = f"""
-import json, sqlite3
+import json, sqlite3, os, glob
 try:
-    conn = sqlite3.connect('{db_path}')
+    target_path = '{db_path}'
+    if '*' in target_path:
+        files = glob.glob(target_path)
+        if not files:
+            raise Exception("Nem talalhato fajl a megadott mintaval.")
+        target_path = max(files, key=os.path.getmtime)
+
+    conn = sqlite3.connect(target_path)
     c = conn.cursor()
     c.execute("SELECT name FROM sqlite_master WHERE type='table';")
     tables = c.fetchall()
