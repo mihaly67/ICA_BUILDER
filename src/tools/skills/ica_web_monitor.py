@@ -383,7 +383,7 @@ HTML_TEMPLATE = """
             .attr("fill", "#e0e0e0")
             .style("font-size", "11px")
             .each(function(d) {
-                let textStr = d.data.state || d.data.action || "Root";
+                let textStr = String(d.data.state || d.data.action || "Root");
                 const words = textStr.split(' ');
                 let line = '';
                 let yOffset = 0;
