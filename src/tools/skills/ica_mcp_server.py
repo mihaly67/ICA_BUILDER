@@ -36,7 +36,9 @@ RAG_DATABASES = {
     "MX_Linux": "/home/misi/MX_LINUX_RAG/MX_LINUX_knowledge.db",
     "MQL5_Articles": "/home/misi/Jules cikk és fájl letöltés_RAG/RAG_MQL5_ARTICLES_github.db",
     "MQL5_Theory": "/home/misi/MQL5_Theory_RAG/RAG_MQL5_THEORY_knowledge.db",
-    "Jules_ICA_Builder": "/home/misi/Jules_ICA_Builder/agent_memory.jsonl"
+    "Jules_ICA_Builder": "/home/misi/Jules_ICA_Builder/agent_memory.jsonl",
+    "VideoDownloader": "/home/misi/video_downloader_RAG/VIDEO_DOWNLOADER_knowledge.db",
+    "VideoRestaurator": "/home/misi/kep_video_restauralo_RAG/RESTORE_knowledge.db"
 }
 
 MEMORY_REGISTER_FILE = os.path.expanduser("~/Jules_ICA_Builder/agent_register.jsonl")
@@ -152,7 +154,16 @@ def search_rag_labels(query: str) -> str:
 @mcp.tool()
 def execute_bash(command: str, justification: str = "") -> str:
     import ica_guardrails_mcp
-    is_safe, safe_command = ica_guardrails_mcp.sanitize_bash_command(command)
+
+    # Fix unpacking based on actual sanitize_bash_command return type
+    sanitize_result = ica_guardrails_mcp.sanitize_bash_command(command)
+    if isinstance(sanitize_result, tuple) and len(sanitize_result) == 2:
+        is_safe, safe_command = sanitize_result
+    else:
+        # Assuming it returns a string based on the `-> str` signature in grep
+        safe_command = sanitize_result
+        is_safe = "BLOKKOLVA" not in safe_command
+
     if not is_safe:
         return "🚨 BLOKKOLVA [BASH GUARDRAIL]: Fájlba írás vagy fájl-átirányítás (>, >>, tee) a Bash-en keresztül szigorúan TILOS! Az AI-nak kötelezően a Pipeline Gate-tel védett write_file_mcp eszközt kell használnia erre a célra! Eredeti parancs: " + command
 
