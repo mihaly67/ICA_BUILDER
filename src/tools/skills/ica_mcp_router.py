@@ -469,6 +469,7 @@ add_tool_with_telemetry(io_server.get_memory)
 add_tool_with_telemetry(io_server.write_memory)
 add_tool_with_telemetry(io_server.deep_planning)
 add_tool_with_telemetry(io_server.check_system_health)
+add_tool_with_telemetry(io_server.generate_research_blueprint)
 
 
 # Guardrails

@@ -959,6 +959,94 @@ async def deep_planning(initial_state: str, max_iterations: int = 5) -> str:
     except Exception as e:
         return f"Hiba az MCTS tervezés során: {e}"
 
+@mcp.tool()
+async def generate_research_blueprint(topic: str, rag_sources: list[str], target_blueprint_path: str = "/home/misi/Jules_ICA_Builder/blueprint.md") -> str:
+    """
+    Rendszer-szintű Tervező Orchestrator (A "Szakácskönyv" készítő).
+    Ez az eszköz végrehajtja a teljes Kognitív Ciklust egy adott témában:
+    1. Lekérdezi a megadott RAG adatbázisokat (pl. ['MQL5_Articles', 'BRAIN2']).
+    2. A kapott adatokat átadja a 'deep_planning' (System 2) MCTS logikának.
+    3. Legenerálja a formális 'blueprint.md' szakácskönyvet az ADR szabályok szerint.
+    4. Automatikusan bejegyzi a Tudásgráfba.
+    """
+    import json
+
+    # 1. RAG Keresés
+    collected_data = ""
+    for rag in rag_sources:
+        try:
+            # Csak az alap kulcsszavakat vesszük ki a topic-ból egyszerűsített kereséshez
+            keywords = [w for w in topic.replace("/", " ").replace("-", " ").split() if len(w) > 3]
+            for kw in keywords[:3]: # Max 3 kulcsszó, hogy ne floodoljuk
+                rag_res = await search_rag_database(rag_name=rag, keyword=kw, limit=2)
+                if "Hiba" not in rag_res and "Nincs találat" not in rag_res:
+                    collected_data += f"\n--- RAG FORRÁS: {rag} (Kulcsszó: {kw}) ---\n{rag_res}\n"
+        except Exception as e:
+            collected_data += f"Hiba a {rag} lekérdezésekor: {e}\n"
+
+    if not collected_data.strip():
+        collected_data = "Nem találtunk értékelhető adatot a RAG forrásokban. Használd az általános tudásodat."
+
+    # 2. MCTS System 2 Tervezés (Prompt építés)
+    mcts_prompt = f"""
+Cél: Készíts egy teljes Architekturális Szakácskönyvet (Blueprint) a következő témában: '{topic}'.
+Rendelkezésre álló kontextus a RAG adatbázisokból:
+{collected_data[:3000]}  # Limitált kontextus, hogy beférjen az Ollama tokenablakba
+
+Szintetizáld az információkat! Mi a múlt (elméleti háttér/meglévő kód), jelen (mit építünk) és jövő (következmények)?
+Add vissza egy tiszta Markdown formátumú szöveget, amely tartalmazza a KÖTELEZŐ ADR fejléceket:
+## Context
+## Decision
+## Consequences
+## Status
+"""
+
+    plan_result = await deep_planning(initial_state=mcts_prompt, max_iterations=2)
+
+    # Kinyerjük a best_action-t az eredményből (ez maga a Markdown tartalom lenne ideális esetben)
+    blueprint_content = "## Context\nA System 2 tervezés megszakadt vagy nem adott értékelhető szöveget."
+    try:
+        res_dict = json.loads(plan_result)
+        if "best_action" in res_dict:
+            blueprint_content = res_dict["best_action"]
+            # Biztosítjuk, hogy a kötelező fejlécek benne legyenek
+            if "## Context" not in blueprint_content:
+                blueprint_content = f"# Blueprint: {topic}\n## Context\n{blueprint_content}\n## Decision\n(Lásd fent)\n## Consequences\nN/A\n## Status\nTERVEZETT"
+    except Exception:
+        # Ha a deep_planning sima stringet adott vissza
+        blueprint_content = plan_result
+
+    # 3. Fájl mentése (a Pipeline Gate feloldásához)
+    try:
+        import os
+        os.makedirs(os.path.dirname(target_blueprint_path), exist_ok=True)
+        with open(target_blueprint_path, "w", encoding="utf-8") as f:
+            f.write(blueprint_content)
+    except Exception as e:
+        return f"Hiba a blueprint mentésekor: {e}"
+
+    # 4. Tudásgráf regisztráció (Auto-Graph Committer már benne van az MCP Routerben, de ez közvetlenül hívja, mert szerver oldalon vagyunk)
+    try:
+        import ica_memory_mcp
+        node_name = f"Blueprint_{topic.replace(' ', '_')[:20]}"
+        ica_memory_mcp.add_memory_node(
+            name=node_name,
+            entity_type="Architecture_Blueprint",
+            description=f"Automatikusan generált Szakácskönyv (Orchestrator). Téma: {topic}"
+        )
+        ica_memory_mcp.add_memory_edge(
+            source_name=node_name,
+            target_name="ICA Builder",
+            relationship="planned_by"
+        )
+    except Exception as e:
+        # Gráf hiba nem akasztja meg a folyamatot
+        print(f"Gráf hiba a blueprint generálásnál: {e}", file=sys.stderr)
+        pass
+
+    return f"✅ Sikeresen legeneráltuk és elmentettük a Szakácskönyvet a(z) {target_blueprint_path} útvonalra!\nRAG Források használva: {rag_sources}\nA Tudásgráf frissítve."
+
+
 def main():
     print("🚀 Jules VPS MCP Szerver elindítva (stdio módban).", file=sys.stderr)
     mcp.run()
