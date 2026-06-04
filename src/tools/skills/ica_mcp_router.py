@@ -24,8 +24,15 @@ def cognitive_preflight_check(func_name, kwargs):
     bizonyítania kell, hogy reflektált a szabályokra.
     """
     critical_tools = ["write_file_mcp", "execute_bash"]
+
+    # Ha a deep_planning lefut, frissítjük az "utolsó System 2" időbélyeget
+    if func_name == "deep_planning":
+        import time
+        global _LAST_DEEP_PLANNING_TIME
+        _LAST_DEEP_PLANNING_TIME = time.time()
+
     if func_name in critical_tools:
-        # Ha a tool megengedi a 'justification' vagy 'reasoning' mezőt
+        # 1. Kényszerített Indoklás (Justification)
         justification = kwargs.get("justification", kwargs.get("reasoning", ""))
 
         if not justification or len(str(justification)) < 20:
@@ -33,8 +40,28 @@ def cognitive_preflight_check(func_name, kwargs):
                              f"kötelező megadni egy részletes 'justification' vagy 'reasoning' paramétert (>20 karakter), "
                              f"amelyben megindokolod, hogy a lépés hogyan illeszkedik az AGENTS_ICA.md és a Zero Trust szabályrendszerbe.")
 
+        # 2. Hard Guardrail: System 2 (MCTS) használatának kényszerítése
+        # Csak akkor kötelező a deep_planning, ha nem triviális parancsról van szó
+        is_trivial = False
+        if func_name == "execute_bash":
+            cmd = kwargs.get("command", "")
+            if any(cmd.startswith(prefix) for prefix in ["ls", "cat", "echo", "pwd", "grep", "find"]):
+                is_trivial = True
+
+        if not is_trivial:
+            import time
+            # Használjuk a globals() dictionary-t a SyntaxError elkerülésére a függvényben
+            current_time = time.time()
+            last_dp = globals().get("_LAST_DEEP_PLANNING_TIME", 0)
+
+            if current_time - last_dp > 900:
+                raise ValueError(f"HARD GUARDRAIL BLOKKOLÁS! A '{func_name}' használata komplex feladathoz "
+                                 f"megtagadva. A rendszer nem regisztrált System 2 (deep_planning) MCTS "
+                                 f"tervezést az elmúlt 15 percben. Az LLM 'legrövidebb út' sycophancy elkerülése végett "
+                                 f"KÖTELEZŐ lefolytatnod egy 'deep_planning'-et, mielőtt kódot mentesz vagy futtatsz!")
+
         # Ide jöhetne később akár egy LLM alapú (pl. Ollama) validáció is a megadott reasoning-re,
-        # de a "Münchhausen" problémát elkerülendő, már maga a strukturális kényszerítés (hogy ki kell tölteni) is rákényszeríti az Agentet a System 2 gondolkodásra.
+        # de a "Münchhausen" problémát elkerülendő, már maga a strukturális kényszerítés is rákényszeríti az Agentet a System 2 gondolkodásra.
 
 
 def add_tool_with_telemetry(func):
@@ -147,12 +174,12 @@ def add_tool_with_telemetry(func):
                     import json
                     import datetime
 
-                    last_activity_time = getattr(router_mcp, "_last_auto_memory_time", 0)
+                    last_activity_time = globals().get("_last_auto_memory_time", 0)
                     current_time = time.time()
 
                     # Csak 1 percenként írjunk be automatikusan, hogy ne floodoljuk szét a Stream-et
                     if current_time - last_activity_time > 60:
-                        router_mcp._last_auto_memory_time = current_time
+                        globals()["_last_auto_memory_time"] = current_time
 
                         timestamp = datetime.datetime.now().isoformat()
                         if "2026-" not in timestamp:
@@ -306,11 +333,11 @@ def add_tool_with_telemetry(func):
                     import json
                     import datetime
 
-                    last_activity_time = getattr(router_mcp, "_last_auto_memory_time_sync", 0)
+                    last_activity_time = globals().get("_last_auto_memory_time_sync", 0)
                     current_time = time.time()
 
                     if current_time - last_activity_time > 60:
-                        router_mcp._last_auto_memory_time_sync = current_time
+                        globals()["_last_auto_memory_time_sync"] = current_time
 
                         timestamp = datetime.datetime.now().isoformat()
                         if "2026-" not in timestamp:
@@ -397,8 +424,9 @@ Te egy Senior Szoftverarchitekt vagy, aki a valódi 'Iterative Cognitive Archite
 {inbox_context}
 
 A 4-Lépcsős 'Tervezz, mielőtt kódolsz' Protokoll:
-1. I. Fázis: Absztrakt Architektúra és Topológia
+1. I. Fázis: Absztrakt Architektúra és Topológia (SYSTEM 2 KÉNYSZER!)
    - Elemezd az MCP-n lévő RAG referencia repókat.
+   - KÖTELEZŐ használnod a `deep_planning` eszközt a feladat megtervezésére. Ha ezt kihagyod, a "Hard Guardrail" FIZIKAILAG BLOKKOLNI FOGJA a kódszerkesztést! A rendszer a legrövidebb út megkerülését ezzel gátolja meg.
 2. II. Fázis: Interface Contract Tervezés (BLUEPRINT)
    - Hozz létre egy `blueprint.md`-t ADR fejlécekkel (`## Context`, `## Decision`, `## Consequences`, `## Status`).
 3. III. Fázis: Iteratív Implementáció
