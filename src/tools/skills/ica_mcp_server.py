@@ -655,8 +655,90 @@ async def search_rag_database(rag_name: str, keyword: str, limit: int = 3) -> st
         return f"Hiba: Ismeretlen RAG adatbázis. Elérhetőek: {', '.join(RAG_DATABASES.keys())}"
 
     db_path = RAG_DATABASES[rag_name]
+
+    # ------------------------------------------------------------------------------------------
+    # ZERO TRUST VPS PROXY FALLBACK (Ha a Sandbox nem látja közvetlenül a VPS fájlrendszert)
+    # ------------------------------------------------------------------------------------------
     if not os.path.exists(db_path):
-        return f"Hiba: Az adatbázis fájl nem található a VPS-en: {db_path}"
+        import subprocess
+
+        VPS_HOST = os.environ.get("VPS_HOST", "5.189.163.88")
+        VPS_USER = os.environ.get("VPS_USER", "misi")
+
+        # Generálunk egy egysoros python parancsot, ami lefut a VPS-en, és visszadobja a JSONL / SQLite eredményt
+        safe_keyword = keyword.replace("'", "\\'")
+
+        if db_path.endswith('.jsonl'):
+            python_code = f"""
+import json
+try:
+    with open('{db_path}', 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    res = []
+    for l in reversed(lines):
+        if '{safe_keyword}'.lower() in l.lower():
+            res.append(l.strip())
+            if len(res) >= {limit}: break
+    print('PROXY_RESULT:' + json.dumps(res))
+except Exception as e:
+    print('PROXY_ERROR:' + str(e))
+"""
+        else:
+            # SQLite logika proxy
+            python_code = f"""
+import json, sqlite3
+try:
+    conn = sqlite3.connect('{db_path}')
+    c = conn.cursor()
+    c.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables = c.fetchall()
+    results = []
+    for table in tables:
+        tname = table[0]
+        try:
+            # Csak szöveges mezőkben keresünk egyszerűséggel
+            c.execute(f"SELECT * FROM {{tname}} LIMIT 1")
+            cols = [desc[0] for desc in c.description]
+            where_clause = " OR ".join([f"{{col}} LIKE '%{safe_keyword}%'" for col in cols])
+            c.execute(f"SELECT * FROM {{tname}} WHERE {{where_clause}} LIMIT {limit}")
+            rows = c.fetchall()
+            for r in rows:
+                results.append(f"[Table: {{tname}}] " + " | ".join([str(x)[:200] for x in r]))
+                if len(results) >= {limit}: break
+        except Exception:
+            pass
+        if len(results) >= {limit}: break
+    print('PROXY_RESULT:' + json.dumps(results))
+except Exception as e:
+    print('PROXY_ERROR:' + str(e))
+"""
+        # Biztonságos SSH futtatás a Python kód stdin-en keresztüli beküldésével (RCE és idézőjel escaping hibák elkerülésére)
+        ssh_cmd = [
+            "ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new",
+            f"{VPS_USER}@{VPS_HOST}",
+            "python3 -"
+        ]
+
+        try:
+            result = subprocess.run(ssh_cmd, input=python_code, check=True, capture_output=True, text=True, timeout=15)
+            stdout = result.stdout
+            if "PROXY_ERROR:" in stdout:
+                err = stdout.split("PROXY_ERROR:")[1].strip()
+                return f"Hiba a VPS Proxy hívásakor: {err}"
+            elif "PROXY_RESULT:" in stdout:
+                import json
+                json_str = stdout.split("PROXY_RESULT:")[1].strip()
+                res_list = json.loads(json_str)
+                if not res_list:
+                    return f"Nincs találat a '{keyword}' szóra a VPS proxy memóriában ({rag_name})."
+                return "🔍 Találatok a(z) " + str(rag_name) + " VPS Proxy memóriában:\n" + "\n".join(res_list)
+            else:
+                return f"Ismeretlen VPS Proxy válasz: {stdout}"
+        except subprocess.CalledProcessError as e:
+            return f"Hiba az SSH proxy futtatásakor: {e.stderr}"
+        except Exception as e:
+             return f"Rendszerhiba a proxy során: {str(e)}"
+    # ------------------------------------------------------------------------------------------
 
     if db_path.endswith('.jsonl'):
         try:

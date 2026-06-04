@@ -150,8 +150,7 @@ def add_tool_with_telemetry(func):
                             ica_memory_mcp.add_memory_edge(
                                 source_name=node_name,
                                 target_name="ICA Builder",
-                                relationship="planned_by",
-                                weight=float(best_value)
+                                relationship="planned_by"
                             )
                         except Exception as e:
                             print(f"Auto-Graph Committer Graph Error: {e}")
@@ -312,8 +311,7 @@ def add_tool_with_telemetry(func):
                             ica_memory_mcp.add_memory_edge(
                                 source_name=node_name,
                                 target_name="ICA Builder",
-                                relationship="planned_by",
-                                weight=float(best_value)
+                                relationship="planned_by"
                             )
                         except Exception as e:
                             print(f"Auto-Graph Committer Graph Error: {e}")
