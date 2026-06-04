@@ -3,4 +3,3 @@ __pycache__/
 Registers/*.json
 temp/
 tools/.agent_heartbeat
-src/mcp_telemetry.db
