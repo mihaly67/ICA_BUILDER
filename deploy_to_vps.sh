@@ -110,7 +110,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=$TARGET_DIR
-ExecStart=/usr/bin/python3 ica_web_monitor.py
+ExecStart=/usr/bin/python3 run_monitor.py
 StandardOutput=append:$TARGET_DIR/monitor.log
 StandardError=append:$TARGET_DIR/monitor_errors.log
 Restart=on-failure

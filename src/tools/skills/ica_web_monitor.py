@@ -232,14 +232,14 @@ HTML_TEMPLATE = """
                     try {
                         if (args && args.startsWith('{')) {
                             const argsObj = JSON.parse(args);
-                            if (toolName === execute_bash) {
+                            if (toolName === 'execute_bash') {
                                 toolName = '<span class="text-info">bash:</span> ' + (argsObj.command ? argsObj.command.substring(0,40) + '...' : '');
                                 args = '';
-                            } else if (toolName === write_file_mcp) {
+                            } else if (toolName === 'write_file_mcp') {
                                 const fp = argsObj.filepath ? argsObj.filepath.split('/').pop() : '';
                                 toolName = '<span class="text-warning">write:</span> ' + fp;
                                 args = '';
-                            } else if (toolName === deep_planning) {
+                            } else if (toolName === 'deep_planning') {
                                 toolName = '<span class="badge bg-info text-dark">MCTS System 2</span>';
                                 args = '';
                             }
@@ -330,13 +330,14 @@ HTML_TEMPLATE = """
     let currentMctsDataStr = "";
 
     function renderMCTSTree(treeData) {
-        // Csak akkor rajzoljuk újra, ha változott az adat
-        const newDataStr = JSON.stringify(treeData);
-        if (newDataStr === currentMctsDataStr) return;
-        currentMctsDataStr = newDataStr;
+        try {
+            // Csak akkor rajzoljuk újra, ha változott az adat
+            const newDataStr = JSON.stringify(treeData);
+            if (newDataStr === currentMctsDataStr) return;
+            currentMctsDataStr = newDataStr;
 
-        const container = document.getElementById('mcts-graph');
-        container.innerHTML = ''; // Törlés
+            const container = document.getElementById('mcts-graph');
+            container.innerHTML = ''; // Törlés
 
         const width = container.clientWidth;
         const height = 500;
@@ -383,7 +384,7 @@ HTML_TEMPLATE = """
             .attr("fill", "#e0e0e0")
             .style("font-size", "11px")
             .each(function(d) {
-                let textStr = d.data.state || d.data.action || "Root";
+                let textStr = String(d.data.state || d.data.action || "Root");
                 const words = textStr.split(' ');
                 let line = '';
                 let yOffset = 0;
@@ -403,26 +404,31 @@ HTML_TEMPLATE = """
                 textElement.append("tspan").attr("x", d.children ? -12 : 12).attr("dy", yOffset === 0 ? 0 : "1.1em").text(line);
             });
 
-        // Values (Visits / Reward)
-        node.append("text")
-            .attr("dy", 15)
-            .attr("x", 0)
-            .style("text-anchor", "middle")
-            .attr("fill", "#facc15")
-            .style("font-size", "10px")
-            .text(d => `V: ${d.data.visits || 0} | W: ${(d.data.value || 0).toFixed(2)}`);
+            // Values (Visits / Reward)
+            node.append("text")
+                .attr("dy", 15)
+                .attr("x", 0)
+                .style("text-anchor", "middle")
+                .attr("fill", "#facc15")
+                .style("font-size", "10px")
+                .text(d => `V: ${d.data.visits || 0} | W: ${(d.data.value || 0).toFixed(2)}`);
+        } catch (error) {
+            console.error("Hiba az MCTS renderelés során:", error);
+            document.getElementById('mcts-graph').innerHTML = "<div class='text-danger p-3'>Hiba az MCTS gráf renderelésekor.</div>";
+        }
     }
 
     let currentGraphDataStr = "";
     let graphSimulation = null;
 
     function renderKnowledgeGraph(nodes, edges) {
-        const newDataStr = JSON.stringify(nodes.map(n => n.id)) + JSON.stringify(edges.map(e => e.source_id + '-' + e.target_id));
-        if (newDataStr === currentGraphDataStr) return;
-        currentGraphDataStr = newDataStr;
+        try {
+            const newDataStr = JSON.stringify(nodes.map(n => n.id)) + JSON.stringify(edges.map(e => e.source_id + '-' + e.target_id));
+            if (newDataStr === currentGraphDataStr) return;
+            currentGraphDataStr = newDataStr;
 
-        const container = document.getElementById('kg-graph');
-        container.innerHTML = '';
+            const container = document.getElementById('kg-graph');
+            container.innerHTML = '';
 
         const width = container.clientWidth;
         const height = 600;
@@ -536,25 +542,29 @@ HTML_TEMPLATE = """
                 .attr("transform", d => `translate(${d.x},${d.y})`);
         });
 
-        function drag(simulation) {
-          function dragstarted(event) {
-            if (!event.active) simulation.alphaTarget(0.3).restart();
-            event.subject.fx = event.subject.x;
-            event.subject.fy = event.subject.y;
-          }
-          function dragged(event) {
-            event.subject.fx = event.x;
-            event.subject.fy = event.y;
-          }
-          function dragended(event) {
-            if (!event.active) simulation.alphaTarget(0);
-            event.subject.fx = null;
-            event.subject.fy = null;
-          }
-          return d3.drag()
-              .on("start", dragstarted)
-              .on("drag", dragged)
-              .on("end", dragended);
+            function drag(simulation) {
+              function dragstarted(event) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                event.subject.fx = event.subject.x;
+                event.subject.fy = event.subject.y;
+              }
+              function dragged(event) {
+                event.subject.fx = event.x;
+                event.subject.fy = event.y;
+              }
+              function dragended(event) {
+                if (!event.active) simulation.alphaTarget(0);
+                event.subject.fx = null;
+                event.subject.fy = null;
+              }
+              return d3.drag()
+                  .on("start", dragstarted)
+                  .on("drag", dragged)
+                  .on("end", dragended);
+            }
+        } catch (error) {
+            console.error("Hiba a Knowledge Graph renderelése során:", error);
+            document.getElementById('kg-graph').innerHTML = "<div class='text-danger p-3'>Hiba a Tudásgráf renderelésekor.</div>";
         }
     }
 
