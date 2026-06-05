@@ -6,4 +6,4 @@
 echo "📦 Telepítem a Web Monitor függőségeit (Flask, Waitress)..."
 python3 -m pip install flask waitress --break-system-packages
 
-echo "✅ Kész! Most már indítható az ica_web_monitor.py"
+echo "✅ Kész! Most már indítható az run_monitor.py"
