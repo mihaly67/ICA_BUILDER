@@ -676,8 +676,9 @@ async def search_rag_database(rag_name: str, keyword: str, limit: int = 3) -> st
         VPS_HOST = os.environ.get("VPS_HOST", "5.189.163.88")
         VPS_USER = os.environ.get("VPS_USER", "misi")
 
-        # Generálunk egy egysoros python parancsot, ami lefut a VPS-en, és visszadobja a JSONL / SQLite eredményt
-        safe_keyword = keyword.replace("'", "\\'")
+        # Biztonságos JSON szerializáció a Python String Interpolation (RCE) elkerülésére
+        import json
+        keyword_json = json.dumps(keyword)
 
         if db_path.endswith('.jsonl'):
             python_code = f"""
@@ -690,11 +691,13 @@ try:
             raise Exception("Nem talalhato fajl a megadott mintaval.")
         target_path = max(files, key=os.path.getmtime)
 
+    search_keyword = {keyword_json}
+
     with open(target_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
     res = []
     for l in reversed(lines):
-        if '{safe_keyword}'.lower() in l.lower():
+        if search_keyword.lower() in l.lower():
             res.append(l.strip())
             if len(res) >= {limit}: break
     print('PROXY_RESULT:' + json.dumps(res))
@@ -713,6 +716,8 @@ try:
             raise Exception("Nem talalhato fajl a megadott mintaval.")
         target_path = max(files, key=os.path.getmtime)
 
+    search_keyword = {keyword_json}
+
     conn = sqlite3.connect(target_path)
     c = conn.cursor()
     c.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -724,8 +729,12 @@ try:
             # Csak szöveges mezőkben keresünk egyszerűséggel
             c.execute(f"SELECT * FROM {{tname}} LIMIT 1")
             cols = [desc[0] for desc in c.description]
-            where_clause = " OR ".join([f"{{col}} LIKE '%{safe_keyword}%'" for col in cols])
-            c.execute(f"SELECT * FROM {{tname}} WHERE {{where_clause}} LIMIT {limit}")
+            # SQL Injection védelem: Paraméterezett lekérdezés használata
+            where_clause = " OR ".join([f"{{col}} LIKE ?" for col in cols])
+            query = f"SELECT * FROM {{tname}} WHERE {{where_clause}} LIMIT {limit}"
+            params = [f"%{{search_keyword}}%"] * len(cols)
+
+            c.execute(query, params)
             rows = c.fetchall()
             for r in rows:
                 results.append(f"[Table: {{tname}}] " + " | ".join([str(x)[:200] for x in r]))
