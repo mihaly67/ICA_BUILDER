@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jules ICA - Rendszerfelügyelet</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         body { background-color: #121212; color: #e0e0e0; font-family: monospace; }
         .card { background-color: #1e1e1e; border: 1px solid #333; margin-bottom: 20px; }
@@ -16,8 +16,7 @@
         .table-dark th { background-color: #333; }
         .status-ok { color: #4ade80; font-weight: bold; }
         .status-err { color: #f87171; font-weight: bold; }
-        .memory-box { max-height: 400px; overflow-y: auto; background: #000; padding: 15px; border-radius: 5px; }
-        .log-en margin-bottom: 10px; border-bottom: 1px dashed #333; padding-bottom: 5px; }
+        .log-entry { margin-bottom: 10px; border-bottom: 1px dashed #333; padding-bottom: 5px; }
         .log-time { color: #60a5fa; }
         .log-cat { color: #c084fc; font-weight: bold; }
     </style>
@@ -27,290 +26,124 @@
     <h2 class="mb-4 text-center text-primary">🧠 Jules ICA System Monitor</h2>
 
     <div class="row">
-        <!-- Kognitív Pipeline & System Állapot (ÚJ) -->
-        <div class="col-lg-12 mb-4">
-            <div class="card shadow-sm border-primary">
-                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                    <span>🧠 Kognitív Pipeline (Önreflexió, Guardrails, Blueprint)</span>
-                    <span id="cog-status" class="badge bg-dark">Aktív</span>
+        <!-- Rendszer Állapot -->
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm border-success">
+                <div class="card-header bg-success text-white">
+                    <span>💻 Rendszer Állapot (System Health)</span>
                 </div>
-                <div class="card-body bg-dark text-light p-3">
-                    <div class="row">
-                        <div class="col-md-3">
-                            <h6 class="text-info border-bottom border-secondary pb-1">🛡️ Pipeline Gate (Guardrails)</h6>
-                            <div id="guardrails-status" style="font-size: 13px;">Betöltés...</div>
-                        </div>
-                        <div class="col-md-3">
-                            <h6 class="text-warning border-bottom border-secondary pb-1">📜 Blueprint Állapot</h6>
-                            <div id="blueprint-status" style="font-size: 13px;">Betöltés...</div>
-                        </div>
-                        <div class="col-md-6">
-                            <h6 class="text-danger border-bottom border-secondary pb-1">👿 Ördög Ügyvédje / Önreflexió (Legutóbbi)</h6>
-                            <div id="reflection-status" style="font-size: 13px; max-height: 80px; overflow-y: auto;">Betöltés...</div>
-                        </div>
-                    </div>
+                <div class="card-body bg-dark text-success p-3" style="min-height: 80px;">
+                    <pre id="system-health-data" style="margin: 0; font-size: 14px;">Betöltés...</pre>
                 </div>
             </div>
         </div>
 
-        <!-- System Health & Inbox (ÚJ) -->
-        <div class="col-lg-12 mb-4">
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="card shadow-sm border-success">
-                        <div class="card-header bg-success text-dark">💻 Rendszer Állapot (System Health)</div>
-                        <div class="card-body bg-dark">
-                            <pre id="system-health-data" class="m-0 text-success" style="font-size: 12px; height: 100px; overflow-y: auto;">Betöltés...</pre>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card shadow-sm border-danger">
-                        <div class="card-header bg-danger text-white">📥 Swarm INBOX (Üzenetek / Feladatok)</div>
-                        <div class="card-body bg-dark">
-                            <pre id="swarm-inbox-data" class="m-0 text-danger" style="font-size: 12px; height: 100px; overflow-y: auto;">Betöltés...</pre>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="row mt-2">
-                <div class="col-12">
-                     <div class="card shadow-sm border-secondary">
-                        <div class="card-header bg-secondary text-white">📈 MCP Hívások Futási Ideje (ms)</div>
-                        <div class="card-body bg-dark" style="height: 250px;">
-                            <canvas id="telemetryChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Telemetria Panel -->
-        <div class="col-lg-8">
-            <div class="card shadow-sm">
-                <div class="card-header d-flex justify-content-between align-items-center text-white">
-                    <span>⚙️ MCP Telemetria & Tool Hívások</span>
-                    <span id="telemetry-stats" class="badge bg-secondary">Betöltés...</span>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive" style="max-height: 500px;">
-                        <table class="table table-dark table-striped table-hover mb-0">
-                            <thead>
-                                <tr>
-                                    <th>Időpont</th>
-                                    <th>Eszköz (Tool)</th>
-                                    <th>Idő (ms)</th>
-                                    <th>Státusz</th>
-                                    <th>Részletek / Hiba</th>
-                                </tr>
-                            </thead>
-                            <tbody id="telemetry-body">
-                                <!-- JS tölti ki -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- MCTS Vizualizáció Panel -->
-        <div class="col-lg-12 mt-4">
-            <div class="card shadow-sm border-info">
-                <div class="card-header bg-info text-dark d-flex justify-content-between align-items-center">
-                    <span>🌳 MCTS Mély Tervezés (System 2 Gondolatfa)</span>
-                    <span id="mcts-status" class="badge bg-dark">Várakozás adatra...</span>
-                </div>
-                <div class="card-body" style="background-color: #0d1117; position: relative;">
-                    <div id="mcts-graph" style="width: 100%; height: 500px; overflow: hidden;"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tudásgráf Vizualizáció Panel -->
-        <div class="col-lg-12 mt-4">
-            <div class="card shadow-sm border-warning">
-                <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
-                    <span>🕸️ ICA Tudásgráf (Knowledge Graph)</span>
-                    <select id="repoFilter" class="form-select form-select-sm w-auto bg-dark text-white border-secondary mx-2">
-                        <option value="ALL">Összes Repo mutatása</option>
-                        <option value="Builder">ICA Builder (Core)</option>
-                        <option value="video">Video Downloader</option>
-                        <option value="MQL5">MQL5 Trading</option>
-                        <option value="restoration">Kép/Videó Restauráló</option>
-                        <option value="mx">MX Linux Fejlesztő</option>
-                    </select>
-                    <span id="graph-stats" class="badge bg-dark">Betöltés...</span>
-                </div>
-                <div class="card-body" style="background-color: #0d1117; position: relative;">
-                    <div id="kg-graph" style="width: 100%; height: 600px; overflow: hidden;"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Memória Panel -->
-        <div class="col-lg-4">
+        <!-- Agent Memory -->
+        <div class="col-lg-6 mb-4">
             <div class="card shadow-sm">
                 <div class="card-header d-flex justify-content-between align-items-center text-white">
                     <span>📖 Agent Memory Stream</span>
                     <span id="memory-stats" class="badge bg-primary">Méret: ...</span>
                 </div>
-                <div class="card-body memory-box" id="memory-body">
-                    <!-- JS tölti ki -->
+                <div class="card-body" id="memory-body" style="background: #000; padding: 15px; border-radius: 5px; max-height: 200px; overflow-y: auto;">
+                    Betöltés...
                 </div>
             </div>
         </div>
+
+        <!-- MCTS Gondolatfa -->
+        <div class="col-lg-12 mb-4">
+            <div class="card shadow-sm border-info">
+                <div class="card-header bg-info text-dark d-flex justify-content-between align-items-center">
+                    <span class="fw-bold">🌳 MCTS Mély Tervezés (System 2 Gondolatfa)</span>
+                    <span id="mcts-status" class="badge bg-dark text-white">Várakozás tervezésre...</span>
+                </div>
+                <div class="card-body bg-dark p-0 position-relative" style="height: 500px; overflow: hidden;" id="mcts-graph">
+                    <!-- D3.js Tree helye -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Tudásgráf (Knowledge Graph) -->
+        <div class="col-lg-12 mb-4">
+            <div class="card shadow-sm border-warning">
+                <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                    <span class="fw-bold">🕸️ ICA Tudásgráf (Knowledge Graph)</span>
+                    <div class="d-flex align-items-center gap-3">
+                        <select id="repoFilter" class="form-select form-select-sm bg-dark text-warning border-dark" style="width: auto;">
+                            <option value="">Összes Repo mutatása</option>
+                            <option value="builder">ICA Builder (Core)</option>
+                            <option value="videodownloader">Video Downloader</option>
+                            <option value="mql5">MQL5 Trading</option>
+                            <option value="restoration">Kép/Videó Restauráló</option>
+                            <option value="mx">MX Linux Fejlesztő</option>
+                        </select>
+                        <span id="graph-stats" class="badge bg-dark text-white">Csomópontok: 0 | Kapcsolatok: 0</span>
+                    </div>
+                </div>
+                <div class="card-body bg-dark p-0 position-relative" style="height: 600px; overflow: hidden;" id="kg-graph">
+                    <!-- D3.js Force-Directed Graph -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Telemetria Chart -->
+        <div class="col-lg-12 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center text-white">
+                    <span>📈 MCP Hívások Futási Ideje (ms)</span>
+                </div>
+                <div class="card-body bg-dark" style="height: 250px;">
+                    <canvas id="telemetryChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Telemetria Táblázat -->
+        <div class="col-lg-12 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center text-white">
+                    <span>⚙️ MCP Telemetria & Tool Hívások</span>
+                    <span id="telemetry-stats" class="badge bg-secondary">Összes: 0 | Átlag: 0ms | Hiba: 0%</span>
+                </div>
+                <div class="card-body bg-dark p-0" style="max-height: 350px; overflow-y: auto;">
+                    <table class="table table-dark table-striped table-hover m-0">
+                        <thead style="position: sticky; top: 0; z-index: 1;">
+                            <tr>
+                                <th>#</th>
+                                <th>Időpont</th>
+                                <th>Eszköz (Tool)</th>
+                                <th>Státusz</th>
+                                <th>Idő (ms)</th>
+                                <th>Részletek / Hiba</th>
+                            </tr>
+                        </thead>
+                        <tbody id="telemetry-body">
+                            <tr><td colspan="6" class="text-center">Betöltés...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 
 <script>
-    function updateDashboard() {
-        fetch('/api/data')
-            .then(response => response.json())
-            .then(data => {
-                // Kognitív Pipeline adatok
-                document.getElementById('guardrails-status').innerHTML = data.guardrails_html || "Nincs adat";
-                document.getElementById('blueprint-status').innerHTML = data.blueprint_html || "Nincs adat";
-                document.getElementById('reflection-status').innerHTML = data.reflection_html || "Nincsenek aktív önreflexió bejegyzések.";
-
-                // Rendszer állapot
-                document.getElementById('system-health-data').innerText = data.system_health || "Nincs adat";
-
-                // Swarm Inbox
-                document.getElementById('swarm-inbox-data').innerText = data.swarm_inbox || "Üres / Nincs aktív feladat";
-
-                // Telemetria Chart.js frissítése
-                updateTelemetryChart(data.telemetry);
-
-                // Telemetria statisztikák
-                document.getElementById('telemetry-stats').innerText =
-                    `Összes: ${data.stats.total} | Átlag: ${data.stats.avg_time.toFixed(1)}ms | Hiba: ${data.stats.error_rate.toFixed(1)}%`;
-
-                // MCTS fa renderelés ha van adat
-                const latestMctsData = data.mcts_latest;
-                if (latestMctsData && Object.keys(latestMctsData).length > 0) {
-                    document.getElementById('mcts-status').innerText = "Utolsó tervezés megjelenítve";
-                    renderMCTSTree(latestMctsData);
-                }
-
-                // Telemetria tábla
-                const tbody = document.getElementById('telemetry-body');
-                tbody.innerHTML = '';
-                data.telemetry.forEach((row, index) => {
-                    const statusClass = row.status === 'success' ? 'status-ok' : 'status-err';
-                    const statusText = row.status === 'success' ? 'OK' : 'ERR';
-                    let toolName = row.tool_name;
-                    let args = row.args_raw || '';
-
-                    // Biztonságos JSON feldolgozás null-checkekkel
-                    try {
-                        if (args && args.startsWith('{')) {
-                            const argsObj = JSON.parse(args);
-                            if (toolName === 'execute_bash') {
-                                toolName = '<span class="text-info">bash:</span> ' + (argsObj.command ? argsObj.command.substring(0,40) + '...' : '');
-                                args = '';
-                            } else if (toolName === 'write_file_mcp') {
-                                const fp = argsObj.filepath ? argsObj.filepath.split('/').pop() : '';
-                                toolName = '<span class="text-warning">write:</span> ' + fp;
-                                args = '';
-                            } else if (toolName === 'deep_planning') {
-                                toolName = '<span class="badge bg-info text-dark">MCTS System 2</span>';
-                                args = '';
-                            }
-                        }
-                    } catch(e) {}
-
-                    const safeArgs = args.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = '<td>' + (index + 1) + '</td>' +
-                                   '<td>' + row.time + '</td>' +
-                                   '<td class="font-monospace">' + toolName + '</td>' +
-                                   '<td class="' + statusClass + '">' + statusText + '</td>' +
-                                   '<td>' + parseFloat(row.duration).toFixed(1) + ' ms</td>' +
-                                   '<td class="text-light" style="font-size: 0.85em; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + safeArgs + '</td>';
-                    tbody.appendChild(tr);
-                });
-
-                // Gráf renderelés
-                if (data.graph_nodes && data.graph_edges) {
-                    document.getElementById('graph-stats').innerText = `Csomópontok: ${data.graph_nodes.length} | Kapcsolatok: ${data.graph_edges.length}`;
-                    renderKnowledgeGraph(data.graph_nodes, data.graph_edges);
-                }
-
-                // Memória stream
-                document.getElementById('memory-stats').innerText = `Sorok: ${data.memory_stats.lines} | Méret: ${data.memory_stats.size_kb} KB`;
-                const memBody = document.getElementById('memory-body');
-                memBody.innerHTML = '';
-                data.memory.forEach(mem => {
-                    const ts = mem.timestamp ? mem.timestamp.split('T')[0] : '';
-                    const content = mem.content ? mem.content.substring(0, 150) + '...' : '';
-                    memBody.innerHTML += `
-                        <div class="log-entry">
-                            <span class="log-time">[${ts}]</span>
-                            <span class="log-cat">${mem.category || 'Event'}</span><br>
-                            <span class="text-light">${content}</span>
-                        </div>
-                    `;
-                });
-            })
-            .catch(err => console.error("Hiba az adatok lekérésekor:", err));
-    }
-
     let telemetryChartInstance = null;
-
-    function updateTelemetryChart(telemetryData) {
-        const ctx = document.getElementById('telemetryChart').getContext('2d');
-
-        // Vesszük az utolsó 20-at és megfordítjuk az időrendhez
-        const chartData = [...telemetryData].reverse();
-        const labels = chartData.map(d => d.time.split(' ')[1]); // Csak az idő
-        const durations = chartData.map(d => d.duration);
-        const bgColors = chartData.map(d => d.status === 'success' ? 'rgba(74, 222, 128, 0.6)' : 'rgba(248, 113, 113, 0.6)');
-
-        if (telemetryChartInstance) {
-            telemetryChartInstance.data.labels = labels;
-            telemetryChartInstance.data.datasets[0].data = durations;
-            telemetryChartInstance.data.datasets[0].backgroundColor = bgColors;
-            telemetryChartInstance.update();
-        } else {
-            telemetryChartInstance = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Futási idő (ms)',
-                        data: durations,
-                        backgroundColor: bgColors,
-                        borderColor: 'rgba(255, 255, 255, 0.1)',
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { beginAtZero: true, grid: { color: '#333' }, ticks: { color: '#aaa' } },
-                        x: { grid: { color: '#333' }, ticks: { color: '#aaa', maxRotation: 45, minRotation: 45 } }
-                    },
-                    plugins: {
-                        legend: { labels: { color: '#fff' } }
-                    }
-                }
-            });
-        }
-    }
-
     let currentMctsDataStr = "";
+    let currentGraphDataStr = "";
+    let graphSimulation = null;
 
     function renderMCTSTree(treeData) {
-        // Csak akkor rajzoljuk újra, ha változott az adat
+        if (!treeData || Object.keys(treeData).length === 0) return;
+
         const newDataStr = JSON.stringify(treeData);
         if (newDataStr === currentMctsDataStr) return;
         currentMctsDataStr = newDataStr;
 
         const container = document.getElementById('mcts-graph');
-        container.innerHTML = ''; // Törlés
+        container.innerHTML = '';
 
         const width = container.clientWidth;
         const height = 500;
@@ -319,37 +152,46 @@
         const svg = d3.select("#mcts-graph").append("svg")
             .attr("width", width)
             .attr("height", height)
+            .call(d3.zoom().on("zoom", (event) => {
+               svgGroup.attr("transform", event.transform);
+            }))
             .append("g")
             .attr("transform", `translate(${margin.left},${margin.top})`);
 
+        const svgGroup = svg;
+
         const root = d3.hierarchy(treeData);
-        const treeLayout = d3.tree().size([height - margin.top - margin.bottom, width - margin.left - margin.right]);
+        const dx = 40;
+        const dy = width / 3;
+        const treeLayout = d3.tree().nodeSize([dx, dy]);
         treeLayout(root);
 
-        // Links
-        svg.selectAll(".link")
-            .data(root.links())
-            .enter().append("path")
-            .attr("class", "link")
+        const link = svgGroup.append("g")
             .attr("fill", "none")
-            .attr("stroke", "#444")
-            .attr("stroke-width", 2)
-            .attr("d", d3.linkHorizontal().x(d => d.y).y(d => d.x));
+            .attr("stroke", "#555")
+            .attr("stroke-opacity", 0.6)
+            .attr("stroke-width", 1.5)
+            .selectAll("path")
+            .data(root.links())
+            .join("path")
+            .attr("d", d3.linkHorizontal()
+                .x(d => d.y)
+                .y(d => d.x));
 
-        // Nodes
-        const node = svg.selectAll(".node")
+        const node = svgGroup.append("g")
+            .attr("stroke-linejoin", "round")
+            .attr("stroke-width", 3)
+            .selectAll("g")
             .data(root.descendants())
-            .enter().append("g")
-            .attr("class", "node")
+            .join("g")
             .attr("transform", d => `translate(${d.y},${d.x})`);
 
         node.append("circle")
             .attr("r", 8)
-            .attr("fill", d => d.data.visits > 0 ? "#4ade80" : "#6b7280")
+            .attr("fill", d => (d.data.visits > 0 || d.data.is_root) ? "#4ade80" : "#6b7280")
             .attr("stroke", "#222")
             .attr("stroke-width", 2);
 
-        // Labels (Részletes szövegezés tördelt sorokkal)
         node.append("text")
             .attr("dy", -12)
             .attr("x", d => d.children ? -12 : 12)
@@ -377,20 +219,18 @@
                 textElement.append("tspan").attr("x", d.children ? -12 : 12).attr("dy", yOffset === 0 ? 0 : "1.1em").text(line);
             });
 
-        // Values (Visits / Reward)
         node.append("text")
             .attr("dy", 15)
             .attr("x", 0)
             .style("text-anchor", "middle")
             .attr("fill", "#facc15")
             .style("font-size", "10px")
-            .text(d => `V: ${d.data.visits || 0} | W: ${(d.data.value || 0).toFixed(2)}`);
+            .text(d => `V: ${d.data.visits || 0} | W: ${(parseFloat(d.data.value) || 0).toFixed(2)}`);
     }
 
-    let currentGraphDataStr = "";
-    let graphSimulation = null;
-
     function renderKnowledgeGraph(nodes, edges) {
+        if (!nodes || !edges) return;
+
         const newDataStr = JSON.stringify(nodes.map(n => n.id)) + JSON.stringify(edges.map(e => e.source_id + '-' + e.target_id));
         if (newDataStr === currentGraphDataStr) return;
         currentGraphDataStr = newDataStr;
@@ -406,96 +246,84 @@
             .attr("height", height)
             .call(d3.zoom().on("zoom", (event) => {
                svgGroup.attr("transform", event.transform);
-            }));
+            }))
+            .append("g");
 
-        const svgGroup = svg.append("g");
+        const svgGroup = svg;
 
-        // D3 requires "source" and "target" to be object references or ids
-        // We map SQLite edge references (source_id, target_id) to the node objects
-        const repoFilterEl = document.getElementById('repoFilter');
-        const repoFilter = repoFilterEl ? repoFilterEl.value : 'ALL';
-
+        const repoFilter = document.getElementById('repoFilter').value;
         let filteredNodes = nodes;
-        let filteredEdges = edges;
 
-        if (repoFilter !== 'ALL') {
-            filteredNodes = nodes.filter(d =>
-                (d.description && d.description.toLowerCase().includes(repoFilter.toLowerCase())) ||
-                (d.name && d.name.toLowerCase().includes(repoFilter.toLowerCase())) ||
-                (repoFilter === 'restoration' && (d.description && d.description.toLowerCase().includes('restore'))) ||
-                (repoFilter === 'mx' && (d.description && d.description.toLowerCase().includes('linux'))) ||
-                d.name === 'XRDP_Snap_cgroup_Bug' || d.name === 'XRDP_XFCE_Crash_Fix' || d.name === 'Munchhausen_Zero_Trust' || d.type === 'System' || d.type === 'Core'
-            );
+        if (repoFilter) {
+            filteredNodes = nodes.filter(d => {
+                const desc = String(d.description || "").toLowerCase();
+                return (repoFilter === 'builder' && desc.includes('builder')) ||
+                       (repoFilter === 'videodownloader' && desc.includes('videodownloader')) ||
+                       (repoFilter === 'mql5' && desc.includes('mql5')) ||
+                       (repoFilter === 'restoration' && desc.includes('restore')) ||
+                       (repoFilter === 'mx' && desc.includes('linux')) ||
+                       desc.includes(repoFilter.toLowerCase());
+            });
+        }
 
-            const nodeIds = new Set(filteredNodes.map(d => d.id));
-            filteredEdges = edges.filter(d => nodeIds.has(d.source_id) && nodeIds.has(d.target_id));
+        const validNodeIds = new Set(filteredNodes.map(n => n.id));
+        const filteredEdges = edges.filter(e => validNodeIds.has(e.source_id) && validNodeIds.has(e.target_id));
+
+        document.getElementById('graph-stats').innerText = `Csomópontok: ${filteredNodes.length} | Kapcsolatok: ${filteredEdges.length}`;
+
+        if (graphSimulation) {
+            graphSimulation.stop();
         }
 
         const d3Nodes = filteredNodes.map(d => Object.create(d));
-        const d3Edges = filteredEdges.map(d => {
-            return {
-                source: d.source_id,
-                target: d.target_id,
-                relationship: d.relationship
-            };
-        });
-
-        if (graphSimulation) graphSimulation.stop();
+        const d3Links = filteredEdges.map(d => Object.create({source: d.source_id, target: d.target_id, relationship: d.relationship}));
 
         graphSimulation = d3.forceSimulation(d3Nodes)
-            .force("link", d3.forceLink(d3Edges).id(d => d.id).distance(150))
-            .force("charge", d3.forceManyBody().strength(-400))
-            .force("center", d3.forceCenter(width / 2, height / 2));
+            .force("link", d3.forceLink(d3Links).id(d => d.id).distance(150))
+            .force("charge", d3.forceManyBody().strength(-300))
+            .force("center", d3.forceCenter(width / 2, height / 2))
+            .force("collide", d3.forceCollide().radius(50));
 
-        // Links
         const link = svgGroup.append("g")
-            .attr("stroke", "#555")
+            .attr("stroke", "#444")
             .attr("stroke-opacity", 0.6)
             .selectAll("line")
-            .data(d3Edges)
+            .data(d3Links)
             .join("line")
             .attr("stroke-width", 2);
 
-        // Edge Labels
         const linkText = svgGroup.append("g")
             .selectAll("text")
-            .data(d3Edges)
+            .data(d3Links)
             .join("text")
-            .attr("font-size", 10)
-            .attr("fill", "#fbbf24")
-            .text(d => d.relationship);
+            .attr("font-size", "10px")
+            .attr("fill", "#888")
+            .attr("dy", -5)
+            .attr("text-anchor", "middle")
+            .text(d => String(d.relationship || ""));
 
-        // Nodes
         const node = svgGroup.append("g")
-            .selectAll("g")
+            .attr("stroke", "#fff")
+            .attr("stroke-width", 1.5)
+            .selectAll("circle")
             .data(d3Nodes)
-            .join("g")
+            .join("circle")
+            .attr("r", 15)
+            .attr("fill", d => d.type === 'concept' ? "#4ade80" : (d.type === 'architectural_decision' ? "#3b82f6" : "#c084fc"))
             .call(drag(graphSimulation));
 
-        node.append("circle")
-            .attr("r", 15)
-            .attr("fill", d => {
-                // Egészségi/Státusz logika szimulálása név/típus alapján
-                if(d.name.includes("Error") || d.name.includes("Fail")) return '#ef4444'; // Piros (Hibás)
-                if(d.name.includes("Llama") || d.type === 'System') return '#3b82f6'; // Kék (Mag)
-                if(d.type === 'Module' || d.type === 'Component') return '#10b981'; // Zöld (Aktív/OK)
-                if(d.type === 'SwarmJob') return '#f59e0b'; // Sárga (Folyamatban/Várakozó)
-                return '#6b7280'; // Szürke (Inaktív/Ismeretlen)
-            })
-            .attr("stroke", "#fff")
-            .attr("stroke-width", 1.5);
-
-        // Node Labels
-        node.append("text")
-            .attr("x", 18)
-            .attr("y", "0.31em")
-            .text(d => d.name)
-            .attr("fill", "#fff")
-            .style("font-size", "12px");
-
-        // Node Tooltip (Description)
         node.append("title")
-            .text(d => `${d.type}: ${d.description}`);
+            .text(d => `${String(d.type || "")}: ${String(d.description || "")}`);
+
+        const labels = svgGroup.append("g")
+            .selectAll("text")
+            .data(d3Nodes)
+            .join("text")
+            .attr("dx", 20)
+            .attr("dy", ".35em")
+            .attr("fill", "#e0e0e0")
+            .style("font-size", "12px")
+            .text(d => String(d.name || ""));
 
         graphSimulation.on("tick", () => {
             link
@@ -509,7 +337,12 @@
                 .attr("y", d => (d.source.y + d.target.y) / 2);
 
             node
-                .attr("transform", d => `translate(${d.x},${d.y})`);
+                .attr("cx", d => d.x)
+                .attr("cy", d => d.y);
+
+            labels
+                .attr("x", d => d.x)
+                .attr("y", d => d.y);
         });
 
         function drag(simulation) {
@@ -537,14 +370,144 @@
     const filterEl = document.getElementById('repoFilter');
     if (filterEl) {
         filterEl.addEventListener('change', () => {
-            currentGraphDataStr = ''; // FORCE REDRAW
+            currentGraphDataStr = '';
             updateDashboard();
         });
     }
 
-    // Frissítés másodpercenként
-    setInterval(updateDashboard, 1000);
+    function updateTelemetryChart(telemetryData) {
+        const ctx = document.getElementById('telemetryChart').getContext('2d');
+        const chartData = [...telemetryData].reverse();
+        const labels = chartData.map(d => (d.time || '').split(' ')[1] || '');
+        const durations = chartData.map(d => parseFloat(d.duration) || 0);
+        const bgColors = chartData.map(d => d.status === 'success' ? 'rgba(74, 222, 128, 0.6)' : 'rgba(248, 113, 113, 0.6)');
+
+        if (telemetryChartInstance) {
+            telemetryChartInstance.data.labels = labels;
+            telemetryChartInstance.data.datasets[0].data = durations;
+            telemetryChartInstance.data.datasets[0].backgroundColor = bgColors;
+            telemetryChartInstance.update();
+        } else {
+            telemetryChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{ label: 'Futási idő (ms)', data: durations, backgroundColor: bgColors }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#333' }, ticks: { color: '#aaa' } },
+                        x: { grid: { color: '#333' }, ticks: { color: '#aaa', maxRotation: 45, minRotation: 45 } }
+                    },
+                    plugins: { legend: { labels: { color: '#fff' } } }
+                }
+            });
+        }
+    }
+
+    function updateDashboard() {
+        fetch('/api/data')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('system-health-data').innerText = String(data.system_health || "Nincs adat");
+
+                if (data.memory_stats) {
+                    document.getElementById('memory-stats').innerText = `Sorok: ${data.memory_stats.lines} | Méret: ${data.memory_stats.size_kb} KB`;
+                }
+                const memBody = document.getElementById('memory-body');
+                memBody.innerHTML = '';
+                if (data.memory && data.memory.length > 0) {
+                    data.memory.forEach(mem => {
+                        const ts = mem.timestamp ? String(mem.timestamp).split('T')[0] : '';
+                        const content = mem.content ? String(mem.content).substring(0, 150) + '...' : '';
+                        memBody.innerHTML += `
+                            <div class="log-entry">
+                                <span class="log-time">[${ts}]</span>
+                                <span class="log-cat">${mem.category || 'Event'}</span><br>
+                                <span class="text-light">${content}</span>
+                            </div>
+                        `;
+                    });
+                }
+
+                if (data.mcts_latest) {
+                    document.getElementById('mcts-status').innerText = "Utolsó tervezés megjelenítve";
+                    try {
+                        renderMCTSTree(data.mcts_latest);
+                    } catch(e) {
+                        console.error("Hiba az MCTS fa renderelésekor:", e);
+                    }
+                }
+
+                if (data.graph_nodes && data.graph_edges) {
+                    try {
+                        renderKnowledgeGraph(data.graph_nodes, data.graph_edges);
+                    } catch(e) {
+                        console.error("Hiba a Tudásgráf renderelésekor:", e);
+                    }
+                }
+
+                if (data.telemetry) {
+                    try {
+                        updateTelemetryChart(data.telemetry);
+                    } catch(e) {
+                        console.error("Hiba a diagram frissítésekor:", e);
+                    }
+                }
+
+                if (data.stats) {
+                    document.getElementById('telemetry-stats').innerText =
+                        `Összes: ${data.stats.total || 0} | Átlag: ${(data.stats.avg_time || 0).toFixed(1)}ms | Hiba: ${(data.stats.error_rate || 0).toFixed(1)}%`;
+                }
+
+                const tbody = document.getElementById('telemetry-body');
+                tbody.innerHTML = '';
+                if (data.telemetry && data.telemetry.length > 0) {
+                    data.telemetry.forEach((row, index) => {
+                        const statusClass = row.status === 'success' ? 'status-ok' : 'status-err';
+                        const statusText = row.status === 'success' ? 'OK' : 'ERR';
+                        let toolName = String(row.tool_name || '');
+                        let args = String(row.args_raw || '');
+
+                        try {
+                            if (args.startsWith('{')) {
+                                const argsObj = JSON.parse(args);
+                                if (toolName === 'execute_bash') {
+                                    toolName = '<span class="text-info">bash:</span> ' + (argsObj.command ? String(argsObj.command).substring(0,40) + '...' : '');
+                                    args = '';
+                                } else if (toolName === 'write_file_mcp') {
+                                    const fp = argsObj.filepath ? String(argsObj.filepath).split('/').pop() : '';
+                                    toolName = '<span class="text-warning">write:</span> ' + fp;
+                                    args = '';
+                                } else if (toolName === 'deep_planning') {
+                                    toolName = '<span class="badge bg-info text-dark">MCTS System 2</span>';
+                                    args = '';
+                                }
+                            }
+                        } catch(e) {}
+
+                        const safeArgs = args.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>${index + 1}</td>
+                            <td>${row.time || ''}</td>
+                            <td class="font-monospace">${toolName}</td>
+                            <td class="${statusClass}">${statusText}</td>
+                            <td>${parseFloat(row.duration || 0).toFixed(1)} ms</td>
+                            <td class="text-light" style="font-size: 0.85em; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${safeArgs}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+            })
+            .catch(err => console.error("Hiba az adatok lekérésekor:", err));
+    }
+
     updateDashboard();
+    setInterval(updateDashboard, 5000);
 </script>
 </body>
 </html>
