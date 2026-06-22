@@ -8,7 +8,9 @@ import re
 
 logging.basicConfig(filename='graph_builder.log', level=logging.INFO, format='%(asctime)s - %(message)s')
 
-MEMORY_PATH = "/home/misi/Jules_ICA_Builder/Knowledge_Base/agent_memory.jsonl"
+import glob
+
+MEMORY_DIR = "/home/misi/Jules_ICA_Builder/Knowledge_Base"
 GRAPH_DB_PATH = "/home/misi/Jules_ICA_Builder/ica_knowledge_graph.db"
 
 def init_graph_db():
@@ -38,69 +40,72 @@ def init_graph_db():
     conn.close()
 
 def build_graph_from_memory():
-    if not os.path.exists(MEMORY_PATH):
+    memory_files = glob.glob(os.path.join(MEMORY_DIR, "agent_memory*.jsonl"))
+    if not memory_files:
         return
 
     try:
         conn = sqlite3.connect(GRAPH_DB_PATH)
         c = conn.cursor()
 
-        with open(MEMORY_PATH, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-
         new_nodes = 0
         new_edges = 0
 
-        # Mentsük el a korábbi node-okat egy listába, hogy összeköthessük a kronológiát
-        previous_node_id = None
+        for memory_path in memory_files:
+            # Extract domain tag from filename (e.g., agent_memory_ea.jsonl -> 'ea')
+            filename = os.path.basename(memory_path)
+            domain_tag = "core"
+            if filename.startswith("agent_memory_") and filename.endswith(".jsonl"):
+                domain_tag = filename.replace("agent_memory_", "").replace(".jsonl", "")
+            elif filename == "agent_memory.jsonl":
+                domain_tag = "ica_builder"
 
-        for line in lines:
-            if not line.strip(): continue
-            try:
-                mem = json.loads(line)
-                cat = mem.get('category', '')
-                content = mem.get('content', '')
+            with open(memory_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
 
-                # Csak a fontos mérföldköveket / sarokköveket tesszük be a gráfba
-                if cat in ['Architecture_Decision', 'Reflection', 'Context_Summary', 'Session_Handoff'] and content:
+            # Kronológiai lánc (fájlonként újraindul)
+            previous_node_id = None
 
-                    # Generálunk egy beszédes, rövid nevet a node-nak a kategóriából és az időbélyegből
-                    timestamp = mem.get('timestamp', '')
-                    short_ts = timestamp.split('T')[0] if timestamp else "unknown_date"
+            for line in lines:
+                if not line.strip(): continue
+                try:
+                    mem = json.loads(line)
+                    cat = mem.get('category', '')
+                    content = mem.get('content', '')
 
-                    # Szavak kinyerése a contentből
-                    words = re.findall(r'\b[a-zA-Z]{5,15}\b', content)
-                    key_words = "_".join(words[:2]) if words else "Memory"
+                    if cat in ['Architecture_Decision', 'Reflection', 'Context_Summary', 'Session_Handoff'] and content:
+                        timestamp = mem.get('timestamp', '')
+                        short_ts = timestamp.split('T')[0] if timestamp else "unknown_date"
 
-                    name = f"Mem_{cat}_{short_ts}_{key_words}"
+                        words = re.findall(r'\b[a-zA-Z]{5,15}\b', content)
+                        key_words = "_".join(words[:2]) if words else "Memory"
 
-                    # 1. NODE HOZZÁADÁSA
-                    c.execute("INSERT OR IGNORE INTO entities (name, type, description) VALUES (?, ?, ?)",
-                              (name, "memory_milestone", content))
+                        # Add Domain Tag to Name for uniqueness and filtering
+                        name = f"Mem_[{domain_tag}]_{cat}_{short_ts}_{key_words}"
 
-                    # Lekérjük az ID-t
-                    c.execute("SELECT id FROM entities WHERE name = ?", (name,))
-                    row = c.fetchone()
-                    if not row: continue
-                    current_node_id = row[0]
+                        c.execute("INSERT OR IGNORE INTO entities (name, type, description) VALUES (?, ?, ?)",
+                                  (name, f"memory_milestone", content))
 
-                    # Ha ez egy új node, növeljük a számlálót
-                    if c.rowcount > 0:
-                        new_nodes += 1
+                        c.execute("SELECT id FROM entities WHERE name = ?", (name,))
+                        row = c.fetchone()
+                        if not row: continue
+                        current_node_id = row[0]
 
-                    # 2. CHRONOLÓGIAI EDGE (VONAL) HÚZÁSA AZ ELŐZŐHÖZ
-                    if previous_node_id is not None and previous_node_id != current_node_id:
-                        try:
-                            c.execute("INSERT INTO edges (source_id, target_id, relationship) VALUES (?, ?, ?)",
-                                      (previous_node_id, current_node_id, "followed_by"))
-                            new_edges += 1
-                        except sqlite3.IntegrityError:
-                            pass # Már létezik a kapcsolat
+                        if c.rowcount > 0:
+                            new_nodes += 1
 
-                    previous_node_id = current_node_id
+                        if previous_node_id is not None and previous_node_id != current_node_id:
+                            try:
+                                c.execute("INSERT INTO edges (source_id, target_id, relationship) VALUES (?, ?, ?)",
+                                          (previous_node_id, current_node_id, "followed_by"))
+                                new_edges += 1
+                            except sqlite3.IntegrityError:
+                                pass
 
-            except json.JSONDecodeError:
-                pass
+                        previous_node_id = current_node_id
+
+                except json.JSONDecodeError:
+                    pass
 
         conn.commit()
         if new_nodes > 0 or new_edges > 0:
@@ -110,6 +115,8 @@ def build_graph_from_memory():
     finally:
         if 'conn' in locals():
             conn.close()
+        new_edges = 0
+
 
 if __name__ == '__main__':
     init_graph_db()
