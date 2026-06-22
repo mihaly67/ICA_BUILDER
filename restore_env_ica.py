@@ -13,7 +13,7 @@ def install_dependencies():
     try:
         # Hozzáadjuk a '--break-system-packages' paramétert ha szükséges újabb pip-nél, vagy sudo-val globálisan.
         # De biztonságosabb simán az aktuális pyenv / virtualenv pipjét használni:
-        subprocess.run([sys.executable, "-m", "pip", "install", "mcp", "paramiko", "python-dotenv", "psutil", "flask", "waitress", "beautifulsoup4"], check=True)
+        subprocess.run([sys.executable, "-m", "pip", "install", "mcp", "paramiko", "python-dotenv", "psutil", "flask", "waitress", "beautifulsoup4", "apscheduler"], check=True)
         # A telepítőből kikerült az sshpass az új Zero Trust architektúra (public-key hitelesítés) miatt.
         print("✅ Függőségek telepítve.")
     except Exception as e:
@@ -77,6 +77,20 @@ def main():
 
         print("\n📖 [AUTO-KONTEXTUS] A korábbi események és memóriák betöltése az új Session-höz:")
         subprocess.run([sys.executable, memory_manager_path, "--action", "read", "--limit", "3"])
+
+    # Start Memory Sync Background Process
+    sync_script_path = os.path.join(script_dir, "tools", "sync_memory_to_vps.py")
+    if os.path.exists(sync_script_path):
+        print("🔄 Memória Szinkronizáló Háttérfolyamat indítása...")
+        # Check if already running
+        try:
+            output = subprocess.check_output(["pgrep", "-f", "sync_memory_to_vps.py"]).decode("utf-8")
+            if output.strip():
+                print("✅ A memória szinkronizáló már fut a háttérben.")
+        except subprocess.CalledProcessError:
+            # If not running, start it
+            subprocess.Popen([sys.executable, sync_script_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print("✅ Memória Szinkronizáló elindítva.")
 
     check_vps_llama_status()
     register_rag_environments()
