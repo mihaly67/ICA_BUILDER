@@ -21,18 +21,22 @@ def sync_memory():
         logging.error("SSH_PASS környezeti változó hiányzik, szinkronizáció megszakítva.")
         return
 
+    # Securely set password in env to avoid process list exposure and shell injection
+    env = os.environ.copy()
+    env["SSHPASS"] = SSH_PASS
+
     try:
         # 1. VPS Chattr Unlock (Zero Trust bypass for sync)
-        unlock_cmd = f"sshpass -p '{SSH_PASS}' ssh -o StrictHostKeyChecking=no {VPS_USER}@{VPS_IP} 'sudo -n chattr -a {VPS_TARGET_DIR}/agent_memory.jsonl || true'"
-        subprocess.run(unlock_cmd, shell=True, stderr=subprocess.DEVNULL)
+        unlock_cmd = ["sshpass", "-e", "ssh", "-o", "StrictHostKeyChecking=no", f"{VPS_USER}@{VPS_IP}", f"sudo -n chattr -a {VPS_TARGET_DIR}/agent_memory.jsonl || true"]
+        subprocess.run(unlock_cmd, env=env, stderr=subprocess.DEVNULL)
 
         # 2. RSYNC Upload
-        rsync_cmd = f"sshpass -p '{SSH_PASS}' rsync -avz -e 'ssh -o StrictHostKeyChecking=no' {LOCAL_MEMORY_PATH} {VPS_USER}@{VPS_IP}:{VPS_TARGET_DIR}/"
-        subprocess.run(rsync_cmd, shell=True, check=True, stdout=subprocess.DEVNULL)
+        rsync_cmd = ["sshpass", "-e", "rsync", "-avz", "-e", "ssh -o StrictHostKeyChecking=no", LOCAL_MEMORY_PATH, f"{VPS_USER}@{VPS_IP}:{VPS_TARGET_DIR}/"]
+        subprocess.run(rsync_cmd, env=env, check=True, stdout=subprocess.DEVNULL)
 
         # 3. VPS Chattr Lock
-        lock_cmd = f"sshpass -p '{SSH_PASS}' ssh -o StrictHostKeyChecking=no {VPS_USER}@{VPS_IP} 'sudo -n chattr +a {VPS_TARGET_DIR}/agent_memory.jsonl || true'"
-        subprocess.run(lock_cmd, shell=True, stderr=subprocess.DEVNULL)
+        lock_cmd = ["sshpass", "-e", "ssh", "-o", "StrictHostKeyChecking=no", f"{VPS_USER}@{VPS_IP}", f"sudo -n chattr +a {VPS_TARGET_DIR}/agent_memory.jsonl || true"]
+        subprocess.run(lock_cmd, env=env, stderr=subprocess.DEVNULL)
 
         logging.info("Sikeres szinkronizáció a VPS-re.")
     except subprocess.CalledProcessError as e:
