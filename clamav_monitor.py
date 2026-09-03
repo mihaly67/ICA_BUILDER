@@ -43,8 +43,9 @@ class ClamAVMonitor(QWidget):
         self.btn_start = QPushButton("Indítás")
         self.btn_stop = QPushButton("Leállítás")
 
-        self.btn_start.clicked.connect(lambda: self.run_cmd_sudo("/usr/sbin/service clamav-daemon start"))
-        self.btn_stop.clicked.connect(lambda: self.run_cmd_sudo("/usr/sbin/service clamav-daemon stop"))
+        # A /etc/sudoers.d/security_center-ben systemctl parancsok vannak engedélyezve
+        self.btn_start.clicked.connect(lambda: self.run_cmd_sudo("sudo /usr/bin/systemctl start clamav-daemon"))
+        self.btn_stop.clicked.connect(lambda: self.run_cmd_sudo("sudo /usr/bin/systemctl stop clamav-daemon"))
 
         layout.addWidget(title)
         layout.addStretch()
@@ -58,16 +59,15 @@ class ClamAVMonitor(QWidget):
 
     def run_cmd_sudo(self, cmd):
         try:
-            # Revert to pipelined password that worked for the user, as pkexec and regular sudo both failed
-            subprocess.run(f'sudo {cmd}', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             QTimer.singleShot(1000, self.update_statuses)
         except Exception as e:
             print(f"Error: {e}")
 
     def check_service(self):
         try:
-            # We must use sudo here as well to check the status accurately
-            res = subprocess.run('sudo /usr/sbin/service clamav-daemon status', shell=True, capture_output=True, text=True)
+            # sysvinit rendszeren a systemctl status lehet nem működik megbízhatóan sudo nélkül
+            res = subprocess.run("service clamav-daemon status", shell=True, capture_output=True, text=True)
             return "active" in res.stdout.lower() or "running" in res.stdout.lower()
         except:
             return False

@@ -43,8 +43,9 @@ class Fail2banMonitor(QWidget):
         self.btn_start = QPushButton("Indítás")
         self.btn_stop = QPushButton("Leállítás")
 
-        self.btn_start.clicked.connect(lambda: self.run_cmd_sudo("/usr/sbin/service fail2ban start"))
-        self.btn_stop.clicked.connect(lambda: self.run_cmd_sudo("/usr/sbin/service fail2ban stop"))
+        # A /etc/sudoers.d/security_center-ben systemctl parancsok vannak engedélyezve
+        self.btn_start.clicked.connect(lambda: self.run_cmd_sudo("sudo /usr/bin/systemctl start fail2ban"))
+        self.btn_stop.clicked.connect(lambda: self.run_cmd_sudo("sudo /usr/bin/systemctl stop fail2ban"))
 
         layout.addWidget(title)
         layout.addStretch()
@@ -58,15 +59,16 @@ class Fail2banMonitor(QWidget):
 
     def run_cmd_sudo(self, cmd):
         try:
-            subprocess.run(f'sudo {cmd}', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             QTimer.singleShot(1000, self.update_statuses)
         except Exception as e:
             print(f"Error: {e}")
 
     def check_service(self):
         try:
-            res = subprocess.run('sudo /usr/sbin/service fail2ban status', shell=True, capture_output=True, text=True)
-            return "active" in res.stdout.lower() or "running" in res.stdout.lower()
+            # sysvinit rendszeren a systemctl status lehet nem működik megbízhatóan sudo nélkül
+            res = subprocess.run("service fail2ban status", shell=True, capture_output=True, text=True)
+            return "running" in res.stdout.lower() or "active" in res.stdout.lower()
         except:
             return False
 
