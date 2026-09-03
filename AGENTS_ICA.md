@@ -55,11 +55,3 @@ Te egy Senior Szoftverarchitekt vagy. **Szigorúan TILOS azonnal kódot generál
 4. **IV. Fázis: Memória Konszolidáció (KÖTELEZŐ ZÁRÓ LÉPÉS)**
    - Minden komplex feladat vagy tervezési fázis befejezése után kötelezően dokumentáld a tanulságokat a JSONL memóriába (`write_memory`).
    - ÉPÍTSD FEL A GRÁFOT: Minden létrehozott logikai komponenst és kapcsolatot jegyezz be a Tudásgráfba (`add_memory_node`, `add_memory_edge`) az utókornak!
-
-## FIZIKAI GÉP VS. VPS ARCHITEKTÚRA (JULES DEDIKÁLT SZERVER)
-**Döntési Rögzítés:** A korábban általánosan használt Contabo Ubuntu VPS (Misi) dedikált fejlesztési gépként el lett vetve a vizuális (GUI) és nagy számítási igényű, alacsony késleltetésű feladatok esetében (például MetaTrader 5 futtatása, LightGBM, Copilot). A VPS felhő-infrastruktúrája és virtuális képernyőkezelése elfogadhatatlanul lassú ezen folyamatokhoz.
-
-Helyette a fejlesztési célpont egy valós fizikai szerver: **Jules Dedikált Szerver (AMD FX-6100)**.
-- **Környezet:** KDE Plasma desktop environment.
-- **Teljesítmény & Optimalizálás:** Az AMD FX-6100 processzor stabilan üzemel undervolting beállításokkal (1.15V VCore, 3.0GHz órajel). Ebben az állapotban az MT5, a LightGBM algoritmusok és a Copilot együttes futtatása mellett az átlagos fogyasztás mindössze 50-60 Watt.
-- **Kapcsolat és Belépési Tortúra (Tailscale):** A szerver biztonságos elérése kizárólag a Tailscale VPN hálózaton keresztül történik. A cél IP címe: `100.77.191.66` (User: Jules). A belépés SSH protokollon keresztül valósul meg jelszavas (környezeti változóból betöltve) vagy dedikált kulcs alapú (`~/.ssh/jules_key`) hitelesítéssel. **Szigorú Szabály:** Bármilyen vizuálisan megfigyelendő műveletet (GUI alkalmazások, MT5, diagramok, mprime terheléses teszt) ezen a gépen, és nem a Contabo VPS-en kell végrehajtani.
