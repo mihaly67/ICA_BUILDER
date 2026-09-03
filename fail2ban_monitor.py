@@ -44,8 +44,8 @@ class Fail2banMonitor(QWidget):
         self.btn_stop = QPushButton("Leállítás")
 
         # A /etc/sudoers.d/security_center-ben systemctl parancsok vannak engedélyezve
-        self.btn_start.clicked.connect(lambda: self.run_cmd_sudo("sudo /usr/bin/systemctl start fail2ban"))
-        self.btn_stop.clicked.connect(lambda: self.run_cmd_sudo("sudo /usr/bin/systemctl stop fail2ban"))
+        self.btn_start.clicked.connect(lambda: self.run_cmd_sudo("echo '1104' | sudo -S service fail2ban start"))
+        self.btn_stop.clicked.connect(lambda: self.run_cmd_sudo("echo '1104' | sudo -S service fail2ban stop"))
 
         layout.addWidget(title)
         layout.addStretch()
@@ -67,7 +67,7 @@ class Fail2banMonitor(QWidget):
     def check_service(self):
         try:
             # sysvinit rendszeren a systemctl status lehet nem működik megbízhatóan sudo nélkül
-            res = subprocess.run("service fail2ban status", shell=True, capture_output=True, text=True)
+            res = subprocess.run("echo '1104' | sudo -S service fail2ban status", shell=True, capture_output=True, text=True)
             return "running" in res.stdout.lower() or "active" in res.stdout.lower()
         except:
             return False

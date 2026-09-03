@@ -44,8 +44,8 @@ class ClamAVMonitor(QWidget):
         self.btn_stop = QPushButton("Leállítás")
 
         # A /etc/sudoers.d/security_center-ben systemctl parancsok vannak engedélyezve
-        self.btn_start.clicked.connect(lambda: self.run_cmd_sudo("sudo /usr/bin/systemctl start clamav-daemon"))
-        self.btn_stop.clicked.connect(lambda: self.run_cmd_sudo("sudo /usr/bin/systemctl stop clamav-daemon"))
+        self.btn_start.clicked.connect(lambda: self.run_cmd_sudo("echo '1104' | sudo -S service clamav-daemon start"))
+        self.btn_stop.clicked.connect(lambda: self.run_cmd_sudo("echo '1104' | sudo -S service clamav-daemon stop"))
 
         layout.addWidget(title)
         layout.addStretch()
@@ -67,7 +67,7 @@ class ClamAVMonitor(QWidget):
     def check_service(self):
         try:
             # sysvinit rendszeren a systemctl status lehet nem működik megbízhatóan sudo nélkül
-            res = subprocess.run("service clamav-daemon status", shell=True, capture_output=True, text=True)
+            res = subprocess.run("echo '1104' | sudo -S service clamav-daemon status", shell=True, capture_output=True, text=True)
             return "active" in res.stdout.lower() or "running" in res.stdout.lower()
         except:
             return False
