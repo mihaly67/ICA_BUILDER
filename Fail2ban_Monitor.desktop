@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Fail2ban Monitor
+Comment=Fail2ban status and control
+Exec=python3 /home/Jules/fail2ban_monitor.py
+Icon=utilities-system-monitor
+Terminal=false
+Type=Application
+Categories=System;
