@@ -55,8 +55,3 @@ Te egy Senior Szoftverarchitekt vagy. **Szigorúan TILOS azonnal kódot generál
 4. **IV. Fázis: Memória Konszolidáció (KÖTELEZŐ ZÁRÓ LÉPÉS)**
    - Minden komplex feladat vagy tervezési fázis befejezése után kötelezően dokumentáld a tanulságokat a JSONL memóriába (`write_memory`).
    - ÉPÍTSD FEL A GRÁFOT: Minden létrehozott logikai komponenst és kapcsolatot jegyezz be a Tudásgráfba (`add_memory_node`, `add_memory_edge`) az utókornak!
-
-### TÚLÉLÉSI ÉS CSATLAKOZÁSI PROTOKOLL AMNÉZIA (ÚJRAINDULÁS) ESETÉRE
-Mivel a rendszer állapotmentes, egy teljes újraindulás (amnézia) esetén az Agent számára **kötelező kikötési pontok**:
-1. **Ha nem tudod, hogyan lépj be a Jules gépre (IP-k vagy kulcsok hiányoznak):** Azonnal csatlakozz a Contabo VPS-re (SSH jelszómentesen a `misi@5.189.163.88` címre), és olvasd el a `/home/misi/Jules_sajátgép/SERVER_KAPCSOLATOK.md` dokumentumot! Ebben van a részletes "tudástér" a Tailscale hitelesítésről.
-2. **Ha a 'devbox' vagy a kulcsos hitelesítés timeoutol:** A devbox Tailscale IP-je efemer (változik/eltűnik). Ha nem éred el, használd a jelszavas `sshpass` fallbacket a Jules felhasználóval (Jelszó környezeti változóból: SSHPASS) közvetlenül a fizikai gép legutolsó ismert IP-jére, vagy azonnal kérd le a felhasználótól az új fizikai IP-t! Ne próbálkozz végtelen ciklusban a halott devbox-szal!
