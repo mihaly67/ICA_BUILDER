@@ -43,9 +43,10 @@ class ClamAVMonitor(QWidget):
         self.btn_start = QPushButton("Indítás")
         self.btn_stop = QPushButton("Leállítás")
 
-        # We must use sudo without password piping because we're committing this file to physical machine
-        self.btn_start.clicked.connect(lambda: self.run_cmd_sudo("sudo /usr/sbin/service clamav-daemon start"))
-        self.btn_stop.clicked.connect(lambda: self.run_cmd_sudo("sudo /usr/sbin/service clamav-daemon stop"))
+        # Szigorúan pkexec-et használunk, ami beépített Qt/GUI jelszóbekérőt dob fel a gép Asztalán,
+        # így biztosan fut a jogosultság megszerzése, ha a sudoers valamiért nem engedi át a parancsot a háttérben.
+        self.btn_start.clicked.connect(lambda: self.run_cmd_sudo("pkexec /usr/sbin/service clamav-daemon start"))
+        self.btn_stop.clicked.connect(lambda: self.run_cmd_sudo("pkexec /usr/sbin/service clamav-daemon stop"))
 
         layout.addWidget(title)
         layout.addStretch()
@@ -59,14 +60,15 @@ class ClamAVMonitor(QWidget):
 
     def run_cmd_sudo(self, cmd):
         try:
-            # Sudo is configured NOPASSWD for absolute path
-            subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            QTimer.singleShot(1000, self.update_statuses)
+            # subprocess.Popen-nel indítjuk a pkexec-et, hogy ne blokkolja a GUI szálat a jelszóbeíró ablak alatt.
+            subprocess.Popen(cmd, shell=True)
+            QTimer.singleShot(2000, self.update_statuses)
         except Exception as e:
             print(f"Error: {e}")
 
     def check_service(self):
         try:
+            # Jelszómentes, processz alapú ellenőrzés
             res = subprocess.run("pgrep -f clamd", shell=True, capture_output=True, text=True)
             return res.returncode == 0
         except:

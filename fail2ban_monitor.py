@@ -43,8 +43,8 @@ class Fail2banMonitor(QWidget):
         self.btn_start = QPushButton("Indítás")
         self.btn_stop = QPushButton("Leállítás")
 
-        self.btn_start.clicked.connect(lambda: self.run_cmd_sudo("sudo /usr/sbin/service fail2ban start"))
-        self.btn_stop.clicked.connect(lambda: self.run_cmd_sudo("sudo /usr/sbin/service fail2ban stop"))
+        self.btn_start.clicked.connect(lambda: self.run_cmd_sudo("pkexec /usr/sbin/service fail2ban start"))
+        self.btn_stop.clicked.connect(lambda: self.run_cmd_sudo("pkexec /usr/sbin/service fail2ban stop"))
 
         layout.addWidget(title)
         layout.addStretch()
@@ -58,13 +58,14 @@ class Fail2banMonitor(QWidget):
 
     def run_cmd_sudo(self, cmd):
         try:
-            subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            QTimer.singleShot(1000, self.update_statuses)
+            subprocess.Popen(cmd, shell=True)
+            QTimer.singleShot(2000, self.update_statuses)
         except Exception as e:
             print(f"Error: {e}")
 
     def check_service(self):
         try:
+            # Lightweight process check that doesn't need sudo password
             res = subprocess.run("pgrep -f fail2ban-server", shell=True, capture_output=True, text=True)
             return res.returncode == 0
         except:
