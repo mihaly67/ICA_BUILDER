@@ -43,9 +43,9 @@ class ClamAVMonitor(QWidget):
         self.btn_start = QPushButton("Indítás")
         self.btn_stop = QPushButton("Leállítás")
 
-        # A /etc/sudoers.d/security_center-ben systemctl parancsok vannak engedélyezve
-        self.btn_start.clicked.connect(lambda: self.run_cmd_sudo("echo '1104' | sudo -S service clamav-daemon start"))
-        self.btn_stop.clicked.connect(lambda: self.run_cmd_sudo("echo '1104' | sudo -S service clamav-daemon stop"))
+        # We must use sudo without password piping because we're committing this file to physical machine
+        self.btn_start.clicked.connect(lambda: self.run_cmd_sudo("sudo /usr/sbin/service clamav-daemon start"))
+        self.btn_stop.clicked.connect(lambda: self.run_cmd_sudo("sudo /usr/sbin/service clamav-daemon stop"))
 
         layout.addWidget(title)
         layout.addStretch()
@@ -59,6 +59,7 @@ class ClamAVMonitor(QWidget):
 
     def run_cmd_sudo(self, cmd):
         try:
+            # Sudo is configured NOPASSWD for absolute path
             subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             QTimer.singleShot(1000, self.update_statuses)
         except Exception as e:
@@ -66,9 +67,8 @@ class ClamAVMonitor(QWidget):
 
     def check_service(self):
         try:
-            # sysvinit rendszeren a systemctl status lehet nem működik megbízhatóan sudo nélkül
-            res = subprocess.run("echo '1104' | sudo -S service clamav-daemon status", shell=True, capture_output=True, text=True)
-            return "active" in res.stdout.lower() or "running" in res.stdout.lower()
+            res = subprocess.run("pgrep -f clamd", shell=True, capture_output=True, text=True)
+            return res.returncode == 0
         except:
             return False
 
