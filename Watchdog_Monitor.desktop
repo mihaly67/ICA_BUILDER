@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=Watchdog Monitor
-Comment=Watchdog status and control
-Exec=python3 /home/Jules/watchdog_monitor.py
-Icon=utilities-system-monitor
-Terminal=false
-Type=Application
-Categories=System;

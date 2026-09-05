@@ -1,19 +1,44 @@
 import sys
 import subprocess
+import tempfile
+import os
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QStackedWidget,
                              QListWidget, QFrame)
-from PyQt5.QtCore import QTimer, Qt, QSize
-from PyQt5.QtGui import QFont, QIcon, QColor, QPalette
+from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtGui import QFont
 
 class ServiceController:
     @staticmethod
     def run_cmd(cmd):
         try:
-            # We must use piped password to circumvent strict sysvinit background prompt requirements
-            # without triggering interactive popups that stall.
-            subprocess.Popen(f"echo '1104' | sudo -S {cmd}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen(f"pkexec sh -c '{cmd}'", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception as e:
+            pass
+
+    @staticmethod
+    def run_cmd_watchdog_start():
+        try:
+            res = subprocess.run(['sudo', '/usr/bin/crontab', '-l'], capture_output=True, text=True)
+            current_cron = [line for line in res.stdout.split('\n') if line and 'miner_watchdog' not in line]
+            current_cron.append('* * * * * /usr/local/bin/miner_watchdog.sh')
+            new_cron = '\n'.join(current_cron) + '\n'
+
+            process = subprocess.Popen(['sudo', '/usr/bin/crontab', '-'], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            process.communicate(input=new_cron.encode())
+        except:
+            pass
+
+    @staticmethod
+    def run_cmd_watchdog_stop():
+        try:
+            res = subprocess.run(['sudo', '/usr/bin/crontab', '-l'], capture_output=True, text=True)
+            current_cron = [line for line in res.stdout.split('\n') if line and 'miner_watchdog' not in line]
+            new_cron = '\n'.join(current_cron) + '\n'
+
+            process = subprocess.Popen(['sudo', '/usr/bin/crontab', '-'], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            process.communicate(input=new_cron.encode())
+        except:
             pass
 
     @staticmethod
@@ -37,7 +62,6 @@ class Dashboard(QMainWindow):
         self.setWindowTitle("CyberSec Control Center")
         self.resize(700, 450)
 
-        # Dark, modern "hacker" UI palette inspired by some modern repos
         self.setStyleSheet("""
             QMainWindow { background-color: #0f172a; }
             QListWidget {
@@ -100,20 +124,20 @@ class Dashboard(QMainWindow):
         self.clam_page, self.clam_status = self.create_page(
             "ClamAV Antivirus Daemon",
             "Protects the system against malicious files and trojans.",
-            lambda: ServiceController.run_cmd("service clamav-daemon start"),
-            lambda: ServiceController.run_cmd("service clamav-daemon stop")
+            lambda: ServiceController.run_cmd("/usr/sbin/service clamav-daemon start"),
+            lambda: ServiceController.run_cmd("/usr/sbin/service clamav-daemon stop")
         )
         self.f2b_page, self.f2b_status = self.create_page(
             "Fail2ban Intrusion Prevention",
             "Bans IPs that show malicious signs like too many password failures.",
-            lambda: ServiceController.run_cmd("service fail2ban start"),
-            lambda: ServiceController.run_cmd("service fail2ban stop")
+            lambda: ServiceController.run_cmd("/usr/sbin/service fail2ban start"),
+            lambda: ServiceController.run_cmd("/usr/sbin/service fail2ban stop")
         )
         self.wd_page, self.wd_status = self.create_page(
             "Merkava Cryptominer Watchdog",
             "Continuously scans process list and kills known crypto miners.",
-            lambda: ServiceController.run_cmd("bash -c '(sudo crontab -l 2>/dev/null | grep -v miner_watchdog; echo \"* * * * * /usr/local/bin/miner_watchdog.sh\") | sudo crontab -'"),
-            lambda: ServiceController.run_cmd("bash -c 'sudo crontab -l 2>/dev/null | grep -v miner_watchdog | sudo crontab -'")
+            ServiceController.run_cmd_watchdog_start,
+            ServiceController.run_cmd_watchdog_stop
         )
 
         self.stack.addWidget(self.clam_page)
@@ -193,15 +217,15 @@ class Dashboard(QMainWindow):
         self.stack.setCurrentIndex(index)
 
     def update_statuses(self):
-        # ClamAV
+        # ClamAV - Rootless check
         if ServiceController.get_status("pgrep -f clamd"):
             self.clam_status.setText("● SYSTEM ACTIVE")
-            self.clam_status.setStyleSheet("color: #22c55e;") # Tailwind Green
+            self.clam_status.setStyleSheet("color: #22c55e;")
         else:
             self.clam_status.setText("○ SYSTEM OFFLINE")
-            self.clam_status.setStyleSheet("color: #64748b;") # Tailwind Slate
+            self.clam_status.setStyleSheet("color: #64748b;")
 
-        # Fail2ban
+        # Fail2ban - Rootless check
         if ServiceController.get_status("pgrep -f fail2ban-server"):
             self.f2b_status.setText("● SYSTEM ACTIVE")
             self.f2b_status.setStyleSheet("color: #22c55e;")
@@ -209,8 +233,9 @@ class Dashboard(QMainWindow):
             self.f2b_status.setText("○ SYSTEM OFFLINE")
             self.f2b_status.setStyleSheet("color: #64748b;")
 
-        # Watchdog
-        if ServiceController.get_status("echo '1104' | sudo -S crontab -l 2>/dev/null | grep -q miner_watchdog"):
+        # Watchdog - Pythonic check using absolute path for sudo crontab allowed in sudoers
+        res = subprocess.run(['sudo', '/usr/bin/crontab', '-l'], capture_output=True, text=True)
+        if "miner_watchdog.sh" in res.stdout:
             self.wd_status.setText("● SYSTEM ACTIVE")
             self.wd_status.setStyleSheet("color: #22c55e;")
         else:

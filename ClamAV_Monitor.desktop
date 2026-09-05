@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=ClamAV Monitor
-Comment=ClamAV status and control
-Exec=python3 /home/Jules/clamav_monitor.py
-Icon=utilities-system-monitor
-Terminal=false
-Type=Application
-Categories=System;
