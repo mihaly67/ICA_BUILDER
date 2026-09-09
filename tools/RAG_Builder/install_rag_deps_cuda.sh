@@ -10,8 +10,12 @@ source "$VENV_PATH/bin/activate"
 echo "[*] Függőségek ellenőrzése és telepítése a központi venv-be..."
 pip install --upgrade pip
 
-# Telepítjük a hiányzó CUDA-s RAG csomagokat
-pip install --no-cache-dir sentence-transformers tqdm faiss-gpu
+# ELSŐKÉNT a cu118-as Torch-ot kell telepíteni a --no-cache-dir flaggel!
+# Ha a sentence-transformers-t telepítjük előbb, akkor a pip alapértelmezetten lerántja a PyPI cu12-es (3GB+) csomagjait!
+pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu118
+
+# A 'transformers' csomagból downgrade-elünk a 4.40.0 verzióra, mert az 5.x letiltja a PyTorch-ot, ha a verziója < 2.5
+pip install --no-cache-dir transformers==4.40.0 sentence-transformers tqdm faiss-gpu
 
 echo "[*] Függőségek telepítve CUDA támogatással! A RAG építő szkript futtatásához indítsd el:"
 echo "source $VENV_PATH/bin/activate"
