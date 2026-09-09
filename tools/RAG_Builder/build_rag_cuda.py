@@ -19,7 +19,6 @@ REPO_LIST_PATH = "/home/Jules/MX_LINUX_RAG/vectorized_repos.txt"
 EXTENSIONS = {'.py', '.c', '.h', '.cpp', '.sh', '.md', '.rst', '.json', '.yaml', '.txt', '.conf', '.mk', '.dts', '.dtsi'}
 
 CHUNK_SIZE = 1500
-# GPU VRAM optimalizálás (Felhasználó kérésére: vRAM kihasználtság növelése ~75%-ra)
 BATCH_SIZE = 96
 MAX_CHUNKS_IN_RAM = 500
 
@@ -120,17 +119,27 @@ def get_current_shard_id():
     return max_id
 
 def create_ivfpq_index(dimension, model, sample_texts):
+    # nlist a klaszterek száma (Voronoi cellák). Ha ez nagy, nagyon sok minta kell!
     nlist = 100
     m = 8
 
     quantizer = faiss.IndexFlatL2(dimension)
     index = faiss.IndexIVFPQ(quantizer, dimension, nlist, m, 8)
 
-    print(f"[*] FAISS IVFPQ (Kvantált) index betanítása {len(sample_texts)} mintával (AVX2 hiány kiküszöbölése)...")
-    sample_vectors = model.encode(sample_texts, convert_to_numpy=True)
-    faiss.normalize_L2(sample_vectors)
+    print(f"[*] FAISS IVFPQ (Kvantált) index betanítása {len(sample_texts)} mintával (türelem)...")
 
-    index.train(sample_vectors)
+    # Mivel a minta ~4500 elemű, a GPU encoder is lefagyhat, ha egyben próbáljuk.
+    # Ezért a betanító mintát is batch-elve kódoljuk!
+    sample_vectors = []
+    for i in range(0, len(sample_texts), BATCH_SIZE):
+        batch = sample_texts[i:i+BATCH_SIZE]
+        vecs = model.encode(batch, convert_to_numpy=True)
+        faiss.normalize_L2(vecs)
+        sample_vectors.append(vecs)
+
+    final_sample_vectors = np.vstack(sample_vectors)
+
+    index.train(final_sample_vectors)
     return index
 
 def load_or_create_index(shard_id, dimension, model, sample_texts=None):
@@ -141,7 +150,7 @@ def load_or_create_index(shard_id, dimension, model, sample_texts=None):
     else:
         print(f"[*] Új FAISS IVFPQ shard ({shard_id}) létrehozása...")
         if sample_texts is None:
-            sample_texts = ["sample text padding"] * 300
+            sample_texts = ["sample text padding"] * 4500
         return create_ivfpq_index(dimension, model, sample_texts)
 
 def save_state(conn, index, shard_id, cursor, fully_processed_paths):
@@ -186,19 +195,23 @@ def main():
     model = SentenceTransformer('all-MiniLM-L6-v2', device='cuda')
     dimension = model.get_sentence_embedding_dimension()
 
+    # --- JAVÍTÁS: A mintaszövegek felduzzasztása (FAISS Training Issue) ---
     sample_texts = []
-    for filepath in remaining_files[:100]:
+    for filepath in remaining_files:
         try:
             with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
                 c = f.read()
                 if c.strip():
-                    sample_texts.extend(chunk_text(c, CHUNK_SIZE)[:5])
-            if len(sample_texts) > 300:
+                    sample_texts.extend(chunk_text(c, CHUNK_SIZE))
+            # Hibaüzenet szerint minimum 3900 kell a kMeans clusteringhez
+            if len(sample_texts) > 4500:
+                sample_texts = sample_texts[:4500]
                 break
         except:
             pass
-    if len(sample_texts) < 100:
-        sample_texts = ["padding data for fast text embedding generation in python"] * 300
+    if len(sample_texts) < 4500:
+        sample_texts.extend(["padding data for fast text embedding generation in python"] * (4500 - len(sample_texts)))
+    # ----------------------------------------------------------------------
 
     current_shard_id = get_current_shard_id()
     index = load_or_create_index(current_shard_id, dimension, model, sample_texts)
