@@ -19,7 +19,9 @@ EXTENSIONS = {'.py', '.c', '.h', '.cpp', '.sh', '.md', '.rst', '.json', '.yaml',
 
 CHUNK_SIZE = 1500
 BATCH_SIZE = 32
-MAX_CHUNKS_IN_RAM = 2000
+# JAVÍTÁS: A memóriába olvasott szöveg-darabkák limitjének drasztikus csökkentése (2000 -> 500)
+# hogy sokkal gyakrabban ürítsen és mentesítse a garbage collectort.
+MAX_CHUNKS_IN_RAM = 500
 
 SHUTDOWN_REQUESTED = False
 
@@ -41,6 +43,21 @@ def shutdown_machine():
         subprocess.run(cmd, shell=True, check=True)
     except Exception as e:
         print(f"Hiba a leállítás során: {e}")
+
+def drop_system_caches():
+    """
+    Az operációs rendszer (Linux) agresszív pagecache ürítése.
+    Mivel 35GB forráskódot olvasunk be, a Linux hajlamos telepakolni
+    vele a RAM-ot (buff/cache), ami borzasztóan belassítja a gépet (thrashing).
+    A 'sync' lemezre írja a késleltetett fájlokat, a drop_caches pedig üríti a RAM-ot.
+    Ezt jelszó nélkül a pkexec/sudoers szabályok alapján próbálja futtatni.
+    """
+    try:
+        subprocess.run("sync", shell=True, check=True)
+        # Az echo 1 üríti a pagecache-t
+        subprocess.run("sudo sh -c 'echo 1 > /proc/sys/vm/drop_caches'", shell=True, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
 
 def get_files_and_repos(directory):
     file_list = []
@@ -93,21 +110,19 @@ def save_state(conn, index, faiss_path, cursor, fully_processed_paths):
         cursor.execute("INSERT OR IGNORE INTO rag_meta (path) VALUES (?)", (p,))
 
     conn.commit()
-    # P2000 (Pascal) inkompatibilitás (CUDA 209 hiba) miatt a FAISS indexet CPU-n tartjuk,
-    # így már nem kell gpu_to_cpu konverzió mentéskor sem!
     faiss.write_index(index, faiss_path)
 
+    # Python szintű memória optimalizáció
     gc.collect()
     torch.cuda.empty_cache()
+
+    # Rendszer szintű RAM cache ürítés a lassulás ellen
+    drop_system_caches()
 
     print("\n[*] Állapot biztonságosan elmentve! Később folytathatod ugyanezzel a paranccsal.")
 
 def process_batch(model, index, cursor, batch_chunks, batch_paths):
-    # A szöveg vektorizálása (SentenceTransformer) továbbra is a CUDA-n pörög, hiszen
-    # a modell be van töltve a GPU-ba. (Ez a leginkább CPU-igényes rész amúgy)
     vectors = model.encode(batch_chunks, convert_to_numpy=True)
-
-    # A FAISS normalizálás és beillesztés történik csak a CPU-n (Ez villámgyors amúgy is)
     faiss.normalize_L2(vectors)
     index.add(vectors)
 
@@ -139,7 +154,6 @@ def main():
         return
 
     print("[*] SentenceTransformer modell betöltése GPU-n (CUDA)...")
-    # A legnehezebb feladat (vektorizálás) marad a GPU-n!
     model = SentenceTransformer('all-MiniLM-L6-v2', device='cuda')
     dimension = model.get_sentence_embedding_dimension()
 
@@ -199,7 +213,8 @@ def main():
         fully_processed_paths.add(filepath)
         files_processed_since_save += 1
 
-        if files_processed_since_save >= 1000 or len(current_batch_chunks) >= MAX_CHUNKS_IN_RAM:
+        # JAVÍTÁS: A fájlok számának mentési küszöbét csökkentjük (1000 -> 300) a cache ürítés miatt
+        if files_processed_since_save >= 300 or len(current_batch_chunks) >= MAX_CHUNKS_IN_RAM:
             while len(current_batch_chunks) > 0:
                 chunk_sz = min(BATCH_SIZE, len(current_batch_chunks))
                 batch_texts = current_batch_chunks[:chunk_sz]
