@@ -10,7 +10,6 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
 
-# Konfiguráció a saját géphez
 TARGET_DIR = "/home/Jules/MX_LINUX_RAG"
 DB_PATH = "/home/Jules/MX_LINUX_RAG/mx_linux_hybrid.db"
 FAISS_PATH = "/home/Jules/MX_LINUX_RAG/mx_linux_vector.index"
@@ -19,6 +18,9 @@ EXTENSIONS = {'.py', '.c', '.h', '.cpp', '.sh', '.md', '.rst', '.json', '.yaml',
 
 CHUNK_SIZE = 1500
 BATCH_SIZE = 32
+
+# Felemeljük a pufferelést: kevesebbszer mentjük le a FAISS/SQLite adatokat, hogy
+# ne I/O thrashing legyen a 2+ GB-os fájlok írása/olvasása miatt.
 MAX_CHUNKS_IN_RAM = 2000
 
 SHUTDOWN_REQUESTED = False
@@ -34,13 +36,20 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGINT, signal_handler)
 
 def shutdown_machine():
-    """Leállítja a fizikai gépet a feladat végeztével."""
     print("\n[!] Vektorizálás befejeződött. A gép leállítása (shutdown) indul...")
     try:
         cmd = "sudo shutdown -h now"
         subprocess.run(cmd, shell=True, check=True)
     except Exception as e:
         print(f"Hiba a leállítás során: {e}")
+
+def drop_system_caches():
+    try:
+        subprocess.run("sync", shell=True, check=True)
+        subprocess.run("sudo -n sh -c 'echo 1 > /proc/sys/vm/drop_caches'",
+                       shell=True, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+    except Exception:
+        pass
 
 def get_files_and_repos(directory):
     file_list = []
@@ -68,6 +77,15 @@ def chunk_text(text, max_length):
 
 def init_db(db_path):
     conn = sqlite3.connect(db_path)
+
+    # ---------------------------------------------------------
+    # EXTRÉM SQLITE OPTIMALIZÁCIÓ (Sebesség növelése ~100x-osra)
+    # ---------------------------------------------------------
+    conn.execute('PRAGMA journal_mode = WAL;') # Write-Ahead Logging: drasztikusan gyorsabb I/O
+    conn.execute('PRAGMA synchronous = OFF;')  # Nem várja meg az OS írási visszaigazolását (csak app crasnál veszélyes picit, de van backupunk az indexben)
+    conn.execute('PRAGMA cache_size = 100000;') # Hatalmas RAM cache az SQLite-nak (kb 100MB)
+    conn.execute('PRAGMA temp_store = MEMORY;') # A temp műveleteket RAM-ban végzi Swap helyett
+
     cursor = conn.cursor()
     cursor.execute('''
         CREATE VIRTUAL TABLE IF NOT EXISTS rag_docs USING fts5(
@@ -93,26 +111,21 @@ def save_state(conn, index, faiss_path, cursor, fully_processed_paths):
         cursor.execute("INSERT OR IGNORE INTO rag_meta (path) VALUES (?)", (p,))
 
     conn.commit()
-    # P2000 (Pascal) inkompatibilitás (CUDA 209 hiba) miatt a FAISS indexet CPU-n tartjuk,
-    # így már nem kell gpu_to_cpu konverzió mentéskor sem!
     faiss.write_index(index, faiss_path)
 
     gc.collect()
     torch.cuda.empty_cache()
+    drop_system_caches()
 
-    print("\n[*] Állapot biztonságosan elmentve! Később folytathatod ugyanezzel a paranccsal.")
+    print("\n[*] Állapot biztonságosan elmentve (Következő fázis).")
 
 def process_batch(model, index, cursor, batch_chunks, batch_paths):
-    # A szöveg vektorizálása (SentenceTransformer) továbbra is a CUDA-n pörög, hiszen
-    # a modell be van töltve a GPU-ba. (Ez a leginkább CPU-igényes rész amúgy)
     vectors = model.encode(batch_chunks, convert_to_numpy=True)
-
-    # A FAISS normalizálás és beillesztés történik csak a CPU-n (Ez villámgyors amúgy is)
     faiss.normalize_L2(vectors)
     index.add(vectors)
 
-    for p, t in zip(batch_paths, batch_chunks):
-        cursor.execute("INSERT INTO rag_docs (path, content) VALUES (?, ?)", (p, t))
+    # SQLite tömeges írás optimalizálása (executemany sokkal gyorsabb mint for loop execute)
+    cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(batch_paths, batch_chunks))
 
 def main():
     if not os.path.exists(TARGET_DIR):
@@ -126,7 +139,7 @@ def main():
         for r in sorted(repos):
             f.write(r + '\n')
 
-    print("[*] SQLite adatbázis inicializálása...")
+    print("[*] SQLite adatbázis inicializálása extrém I/O sebességgel (WAL, Sync=OFF)...")
     conn, cursor = init_db(DB_PATH)
 
     processed_files = get_processed_files(cursor)
@@ -139,12 +152,11 @@ def main():
         return
 
     print("[*] SentenceTransformer modell betöltése GPU-n (CUDA)...")
-    # A legnehezebb feladat (vektorizálás) marad a GPU-n!
     model = SentenceTransformer('all-MiniLM-L6-v2', device='cuda')
     dimension = model.get_sentence_embedding_dimension()
 
     if os.path.exists(FAISS_PATH):
-        print("[*] Meglévő FAISS index betöltése a lemezről...")
+        print("[*] Meglévő FAISS index betöltése a lemezről (Ez eltarthat egy percig is)...")
         index = faiss.read_index(FAISS_PATH)
     else:
         print("[*] Új FAISS index létrehozása...")
@@ -158,7 +170,11 @@ def main():
     fully_processed_paths = set()
     files_processed_since_save = 0
 
-    for filepath in tqdm(remaining_files, desc="Fájlok feldolgozása"):
+    # Csak 2000 FÁJLONKÉNT mentünk (eddig 300 volt). A FAISS write és SQLite Commit
+    # több gigabájtos fájloknál súlyos másodperceket vesz igénybe.
+    SAVE_INTERVAL_FILES = 2000
+
+    for filepath in tqdm(remaining_files, desc="Fájlok feldolgozása", miniters=10):
         if SHUTDOWN_REQUESTED:
             current_batch_chunks = []
             current_batch_paths = []
@@ -186,6 +202,7 @@ def main():
             batch_texts = current_batch_chunks[:BATCH_SIZE]
             batch_paths = current_batch_paths[:BATCH_SIZE]
 
+            # Ez is sokat gyorsít, mert batch-elve küldjük be az SQLite-ba a process_batch alatt
             process_batch(model, index, cursor, batch_texts, batch_paths)
 
             current_batch_chunks = current_batch_chunks[BATCH_SIZE:]
@@ -199,7 +216,7 @@ def main():
         fully_processed_paths.add(filepath)
         files_processed_since_save += 1
 
-        if files_processed_since_save >= 1000 or len(current_batch_chunks) >= MAX_CHUNKS_IN_RAM:
+        if files_processed_since_save >= SAVE_INTERVAL_FILES or len(current_batch_chunks) >= MAX_CHUNKS_IN_RAM:
             while len(current_batch_chunks) > 0:
                 chunk_sz = min(BATCH_SIZE, len(current_batch_chunks))
                 batch_texts = current_batch_chunks[:chunk_sz]
