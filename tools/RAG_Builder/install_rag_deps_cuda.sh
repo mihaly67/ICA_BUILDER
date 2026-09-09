@@ -15,7 +15,8 @@ pip install --upgrade pip
 pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu118
 
 # A 'transformers' csomagból downgrade-elünk a 4.40.0 verzióra, mert az 5.x letiltja a PyTorch-ot, ha a verziója < 2.5
-pip install --no-cache-dir transformers==4.40.0 sentence-transformers tqdm faiss-gpu
+# A 'sentence-transformers'-t is a 2.7.0 verzióra pinneljük az inkompatibilitások miatt
+pip install --no-cache-dir transformers==4.40.0 sentence-transformers==2.7.0 tqdm faiss-gpu
 
 echo "[*] Függőségek telepítve CUDA támogatással! A RAG építő szkript futtatásához indítsd el:"
 echo "source $VENV_PATH/bin/activate"
