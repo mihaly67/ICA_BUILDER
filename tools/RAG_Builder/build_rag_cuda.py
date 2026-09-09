@@ -6,11 +6,12 @@ import gc
 import torch
 import subprocess
 import glob
-from collections import deque
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
+import queue
+import threading
 
 TARGET_DIR = "/home/Jules/MX_LINUX_RAG"
 DB_PATH = "/home/Jules/MX_LINUX_RAG/mx_linux_hybrid.db"
@@ -20,7 +21,6 @@ EXTENSIONS = {'.py', '.c', '.h', '.cpp', '.sh', '.md', '.rst', '.json', '.yaml',
 
 CHUNK_SIZE = 1500
 BATCH_SIZE = 96
-MAX_CHUNKS_IN_RAM = 500
 MAX_VECTORS_PER_SHARD = 500000
 
 SHUTDOWN_REQUESTED = False
@@ -28,10 +28,8 @@ SHUTDOWN_REQUESTED = False
 def signal_handler(sig, frame):
     global SHUTDOWN_REQUESTED
     if not SHUTDOWN_REQUESTED:
-        print("\n\n[!] Megszakítás (Ctrl+C) észlelve! Kérlek, várj amíg a program biztonságosan elmenti az eddigi adatokat...")
+        print("\n\n[!] Megszakítás (Ctrl+C) észlelve! Biztonságos leállítás...")
         SHUTDOWN_REQUESTED = True
-    else:
-        print("\n[!] Már folyamatban van a mentés és leállítás. Türelem...")
 
 signal.signal(signal.SIGINT, signal_handler)
 
@@ -43,16 +41,6 @@ def shutdown_machine():
     except Exception as e:
         print(f"Hiba a leállítás során: {e}")
 
-def drop_system_caches():
-    try:
-        subprocess.run("sync", shell=True, check=True)
-        subprocess.run("sudo -n sh -c 'echo 1 > /proc/sys/vm/drop_caches'",
-                       shell=True, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-    except Exception:
-        pass
-
-# JAVÍTÁS 1: A get_files generátorrá alakítása!
-# Mivel 713,000 fájl memóriában tartása (és az os.walk futtatása egyszerre) feleslegesen lassít és szemetel.
 def get_files_generator(directory):
     for root, _, files in os.walk(directory):
         if '.git' in root or 'node_modules' in root or '__pycache__' in root:
@@ -68,15 +56,30 @@ def chunk_text(text, max_length):
         chunks.append(text[i:i+max_length])
     return chunks
 
+# PRODUCER THREAD: Fájlok beolvasása és darabolása memóriába aszinkron módon
+def file_reader_thread(remaining_files, data_queue):
+    for filepath in remaining_files:
+        if SHUTDOWN_REQUESTED:
+            break
+        try:
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            if not content.strip():
+                data_queue.put(('SKIP', filepath, []))
+                continue
+
+            chunks = chunk_text(content, CHUNK_SIZE)
+            data_queue.put(('DATA', filepath, chunks))
+        except Exception:
+            data_queue.put(('SKIP', filepath, []))
+
+    data_queue.put(('DONE', None, None))
+
 def init_db(db_path):
     conn = sqlite3.connect(db_path)
-
-    # JAVÍTÁS 2: FTS5 lassulás ellen EXTRÉM SQLite PRAGMÁK
     conn.execute('PRAGMA journal_mode = WAL;')
-    conn.execute('PRAGMA synchronous = OFF;') # Kikapcsoljuk az Fsync-et, az I/O blokkolást teljesen megszünteti
-    conn.execute('PRAGMA cache_size = -200000;') # 200MB RAM dedikálása az SQLite-nak a thrashing ellen
-    conn.execute('PRAGMA temp_store = MEMORY;')
-    conn.execute('PRAGMA mmap_size = 30000000000;') # MMAP bekapcsolása gigantikus DB-hez (30GB-ig)
+    conn.execute('PRAGMA synchronous = OFF;')
+    conn.execute('PRAGMA cache_size = 50000;')
 
     cursor = conn.cursor()
     cursor.execute('''
@@ -95,105 +98,51 @@ def init_db(db_path):
 
 def get_processed_files(cursor):
     cursor.execute("SELECT DISTINCT path FROM rag_meta")
-    rows = cursor.fetchall()
-    return set([row[0] for row in rows])
+    return {row[0] for row in cursor.fetchall()}
 
 def get_current_shard_id():
     shards = glob.glob(f"{FAISS_BASE_PATH}_*.index")
     if not shards:
         return 1
-
-    max_id = 1
-    for s in shards:
-        try:
-            num = int(s.split('_')[-1].split('.')[0])
-            if num > max_id:
-                max_id = num
-        except:
-            pass
-    return max_id
+    return max([int(s.split('_')[-1].split('.')[0]) for s in shards])
 
 def create_ivfpq_index(dimension, model, sample_texts):
-    nlist = 100
-    m = 8
-
     quantizer = faiss.IndexFlatL2(dimension)
-    index = faiss.IndexIVFPQ(quantizer, dimension, nlist, m, 8)
+    index = faiss.IndexIVFPQ(quantizer, dimension, 100, 8, 8)
 
-    print(f"[*] FAISS IVFPQ (Kvantált) index betanítása {len(sample_texts)} mintával...")
-
-    sample_vectors = []
-    for i in range(0, len(sample_texts), BATCH_SIZE):
-        batch = sample_texts[i:i+BATCH_SIZE]
-        vecs = model.encode(batch, convert_to_numpy=True)
-        faiss.normalize_L2(vecs)
-        sample_vectors.append(vecs)
-
-    final_sample_vectors = np.vstack(sample_vectors)
-
-    index.train(final_sample_vectors)
+    print(f"[*] FAISS IVFPQ index betanítása {len(sample_texts)} mintával...")
+    sample_vectors = model.encode(sample_texts, batch_size=BATCH_SIZE, convert_to_numpy=True)
+    faiss.normalize_L2(sample_vectors)
+    index.train(sample_vectors)
     return index
 
-def load_or_create_index(shard_id, dimension, model, sample_texts=None):
-    path = f"{FAISS_BASE_PATH}_{shard_id}.index"
-    if os.path.exists(path):
-        print(f"[*] Meglévő FAISS shard ({shard_id}) betöltése a lemezről...")
-        return faiss.read_index(path)
-    else:
-        print(f"[*] Új FAISS IVFPQ shard ({shard_id}) létrehozása...")
-        if sample_texts is None:
-            sample_texts = ["sample text padding"] * 4500
-        return create_ivfpq_index(dimension, model, sample_texts)
-
 def save_state(conn, index, shard_id, cursor, fully_processed_paths):
-    # Tranzakció a DB-nek, hogy a sebesség iszonyatos maradjon
     cursor.execute("BEGIN TRANSACTION;")
-    for p in fully_processed_paths:
-        cursor.execute("INSERT OR IGNORE INTO rag_meta (path) VALUES (?)", (p,))
+    cursor.executemany("INSERT OR IGNORE INTO rag_meta (path) VALUES (?)", [(p,) for p in fully_processed_paths])
     conn.commit()
 
-    path = f"{FAISS_BASE_PATH}_{shard_id}.index"
-    faiss.write_index(index, path)
-
+    faiss.write_index(index, f"{FAISS_BASE_PATH}_{shard_id}.index")
     gc.collect()
     torch.cuda.empty_cache()
-    drop_system_caches()
-
-    print(f"\n[*] Állapot elmentve (Shard: {shard_id}).")
 
 def main():
     if not os.path.exists(TARGET_DIR):
-        print(f"Hiba: A {TARGET_DIR} mappa nem létezik.")
         return
 
-    print("[*] SQLite adatbázis inicializálása EXTRÉM I/O sebességgel (WAL, MMAP, Sync=OFF)...")
-    conn, cursor = init_db(DB_PATH)
-
-    processed_files = get_processed_files(cursor)
-
-    # Listázzuk a fájlokat gyorsan az elején csak a számlálóhoz
-    print(f"[*] Fájlfa bejárása...")
+    print(f"[*] Fájlok keresése a {TARGET_DIR} könyvtárban...")
     all_files_count = 0
     remaining_files = []
+
+    conn, cursor = init_db(DB_PATH)
+    processed_files = get_processed_files(cursor)
 
     for f in get_files_generator(TARGET_DIR):
         all_files_count += 1
         if f not in processed_files:
             remaining_files.append(f)
 
-    # Gyűjtsünk össze repókat a log txt-hez
-    repos = set()
-    for f in remaining_files[:5000]: # Elég az első párból kitalálni a repókat
-        rel_path = os.path.relpath(f, TARGET_DIR)
-        repos.add(rel_path.split(os.sep)[0])
-
-    with open(REPO_LIST_PATH, 'w', encoding='utf-8') as f:
-        for r in sorted(repos):
-            f.write(r + '\n')
-
     print(f"[*] Összes fájl: {all_files_count} | Már feldolgozva: {len(processed_files)} | Hátralévő: {len(remaining_files)}")
-    if len(remaining_files) == 0:
-        print("[*] Minden fájl feldolgozva!")
+    if not remaining_files:
         shutdown_machine()
         return
 
@@ -201,6 +150,7 @@ def main():
     model = SentenceTransformer('all-MiniLM-L6-v2', device='cuda')
     dimension = model.get_sentence_embedding_dimension()
 
+    # Train data gathering
     sample_texts = []
     for filepath in remaining_files:
         try:
@@ -214,117 +164,83 @@ def main():
         except:
             pass
     if len(sample_texts) < 4500:
-        sample_texts.extend(["padding data for fast text embedding generation in python"] * (4500 - len(sample_texts)))
+        sample_texts.extend(["padding"] * (4500 - len(sample_texts)))
 
     current_shard_id = get_current_shard_id()
-    index = load_or_create_index(current_shard_id, dimension, model, sample_texts)
+    path = f"{FAISS_BASE_PATH}_{current_shard_id}.index"
+    if os.path.exists(path):
+        index = faiss.read_index(path)
+    else:
+        index = create_ivfpq_index(dimension, model, sample_texts)
 
-    print("[*] Szövegek előkészítése és vektorizálása (Sharding és Kvantálás aktív)...")
+    # Indítjuk a Producer szálat (I/O olvasás és chunkolás a háttérben)
+    data_queue = queue.Queue(maxsize=10000)
+    producer = threading.Thread(target=file_reader_thread, args=(remaining_files, data_queue))
+    producer.start()
 
-    current_batch_chunks = deque()
-    current_batch_paths = deque()
-
+    current_batch_chunks = []
+    current_batch_paths = []
     fully_processed_paths = set()
-    files_processed_since_save = 0
-    SAVE_INTERVAL_FILES = 2000
 
-    # Explicit SQLite tranzakció indul! Ezzel oldjuk meg a lelassulást.
     cursor.execute("BEGIN TRANSACTION;")
 
-    for filepath in tqdm(remaining_files, desc="Fájlok feldolgozása", miniters=10):
+    pbar = tqdm(total=len(remaining_files), desc="Fájlok feldolgozása")
+
+    while True:
         if SHUTDOWN_REQUESTED:
-            current_batch_chunks.clear()
-            current_batch_paths.clear()
             break
 
         try:
-            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-                content = f.read()
-        except Exception:
-            fully_processed_paths.add(filepath)
+            status, filepath, chunks = data_queue.get(timeout=5)
+        except queue.Empty:
             continue
 
-        if not content.strip():
-            fully_processed_paths.add(filepath)
-            continue
-
-        chunks = chunk_text(content, CHUNK_SIZE)
-        current_batch_chunks.extend(chunks)
-        current_batch_paths.extend([filepath] * len(chunks))
-
-        while len(current_batch_chunks) >= BATCH_SIZE:
-            if SHUTDOWN_REQUESTED:
-                break
-
-            batch_texts = [current_batch_chunks.popleft() for _ in range(BATCH_SIZE)]
-            batch_paths = [current_batch_paths.popleft() for _ in range(BATCH_SIZE)]
-
-            vectors = model.encode(batch_texts, convert_to_numpy=True)
-            faiss.normalize_L2(vectors)
-            index.add(vectors)
-
-            cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(batch_paths, batch_texts))
-
-        if SHUTDOWN_REQUESTED:
-            current_batch_chunks.clear()
-            current_batch_paths.clear()
+        if status == 'DONE':
             break
 
+        if status == 'SKIP':
+            fully_processed_paths.add(filepath)
+            pbar.update(1)
+            continue
+
+        # Adatok betöltése a batch-be
+        for chunk in chunks:
+            current_batch_chunks.append(chunk)
+            current_batch_paths.append(filepath)
+
+            # Ha megtelt a batch, azonnal CUDA GPU execute (A GPU nem vár a lassú fájlolvasásra!)
+            if len(current_batch_chunks) >= BATCH_SIZE:
+                # model.encode batch_size paramétere PyTorch DataLoader szinten optimalizál
+                vectors = model.encode(current_batch_chunks, batch_size=BATCH_SIZE, convert_to_numpy=True, show_progress_bar=False)
+                faiss.normalize_L2(vectors)
+                index.add(vectors)
+
+                cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(current_batch_paths, current_batch_chunks))
+
+                current_batch_chunks.clear()
+                current_batch_paths.clear()
+
         fully_processed_paths.add(filepath)
-        files_processed_since_save += 1
+        pbar.update(1)
 
-        # Periodikus mini-commit az adatbázis megfagyása ellen (itt zárjuk le a tranzakciót és indítunk újat)
-        if len(fully_processed_paths) % 100 == 0:
+        # Mentés és shard váltás
+        if len(fully_processed_paths) >= 2000 or index.ntotal >= MAX_VECTORS_PER_SHARD:
             conn.commit()
-            cursor.execute("BEGIN TRANSACTION;")
-
-        if index.ntotal >= MAX_VECTORS_PER_SHARD:
-            while len(current_batch_chunks) > 0:
-                chunk_sz = min(BATCH_SIZE, len(current_batch_chunks))
-                batch_texts = [current_batch_chunks.popleft() for _ in range(chunk_sz)]
-                batch_paths = [current_batch_paths.popleft() for _ in range(chunk_sz)]
-
-                vectors = model.encode(batch_texts, convert_to_numpy=True)
-                faiss.normalize_L2(vectors)
-                index.add(vectors)
-                cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(batch_paths, batch_texts))
-
-            conn.commit() # Lezárjuk a futó tranzakciót a save előtt
             save_state(conn, index, current_shard_id, cursor, fully_processed_paths)
             fully_processed_paths.clear()
-            files_processed_since_save = 0
 
-            current_shard_id += 1
-            index = create_ivfpq_index(dimension, model, sample_texts)
-            cursor.execute("BEGIN TRANSACTION;") # Új tranzakció a következő shardhoz
+            if index.ntotal >= MAX_VECTORS_PER_SHARD:
+                current_shard_id += 1
+                index = create_ivfpq_index(dimension, model, sample_texts)
 
-        elif files_processed_since_save >= SAVE_INTERVAL_FILES or len(current_batch_chunks) >= MAX_CHUNKS_IN_RAM:
-            while len(current_batch_chunks) > 0:
-                chunk_sz = min(BATCH_SIZE, len(current_batch_chunks))
-                batch_texts = [current_batch_chunks.popleft() for _ in range(chunk_sz)]
-                batch_paths = [current_batch_paths.popleft() for _ in range(chunk_sz)]
-
-                vectors = model.encode(batch_texts, convert_to_numpy=True)
-                faiss.normalize_L2(vectors)
-                index.add(vectors)
-                cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(batch_paths, batch_texts))
-
-            conn.commit() # Tranzakció lezárás a save előtt
-            save_state(conn, index, current_shard_id, cursor, fully_processed_paths)
-            fully_processed_paths.clear()
-            files_processed_since_save = 0
             cursor.execute("BEGIN TRANSACTION;")
 
-    if len(current_batch_chunks) > 0 and not SHUTDOWN_REQUESTED:
-        while len(current_batch_chunks) > 0:
-            chunk_sz = min(BATCH_SIZE, len(current_batch_chunks))
-            batch_texts = [current_batch_chunks.popleft() for _ in range(chunk_sz)]
-            batch_paths = [current_batch_paths.popleft() for _ in range(chunk_sz)]
-
-            vectors = model.encode(batch_texts, convert_to_numpy=True)
-            faiss.normalize_L2(vectors)
-            index.add(vectors)
-            cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(batch_paths, batch_texts))
+    # Maradék feldolgozása, ha nem volt megszakítás
+    if current_batch_chunks and not SHUTDOWN_REQUESTED:
+        vectors = model.encode(current_batch_chunks, batch_size=BATCH_SIZE, convert_to_numpy=True, show_progress_bar=False)
+        faiss.normalize_L2(vectors)
+        index.add(vectors)
+        cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(current_batch_paths, current_batch_chunks))
 
     conn.commit()
     save_state(conn, index, current_shard_id, cursor, fully_processed_paths)
