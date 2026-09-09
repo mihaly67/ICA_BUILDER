@@ -19,12 +19,10 @@ REPO_LIST_PATH = "/home/Jules/MX_LINUX_RAG/vectorized_repos.txt"
 EXTENSIONS = {'.py', '.c', '.h', '.cpp', '.sh', '.md', '.rst', '.json', '.yaml', '.txt', '.conf', '.mk', '.dts', '.dtsi'}
 
 CHUNK_SIZE = 1500
-BATCH_SIZE = 32
+# GPU VRAM optimalizálás (Felhasználó kérésére: vRAM kihasználtság növelése ~75%-ra)
+BATCH_SIZE = 96
 MAX_CHUNKS_IN_RAM = 500
 
-# FAISS Sharding és Kvantálás (Gemini ajánlás) beállítások
-# Mivel 35GB forráskódot dolgozunk fel, egyetlen index betölthetetlen az FX-6100-on.
-# 500.000 vektoronként új index fájlt (shard) nyitunk.
 MAX_VECTORS_PER_SHARD = 500000
 
 SHUTDOWN_REQUESTED = False
@@ -106,10 +104,7 @@ def get_processed_files(cursor):
     rows = cursor.fetchall()
     return set([row[0] for row in rows])
 
-# -- FAISS IVFPQ és Sharding logika --
-
 def get_current_shard_id():
-    """Megkeresi a legnagyobb sorszámú meglévő FAISS index fájlt."""
     shards = glob.glob(f"{FAISS_BASE_PATH}_*.index")
     if not shards:
         return 1
@@ -117,7 +112,6 @@ def get_current_shard_id():
     max_id = 1
     for s in shards:
         try:
-            # mx_linux_vector_1.index -> 1
             num = int(s.split('_')[-1].split('.')[0])
             if num > max_id:
                 max_id = num
@@ -126,19 +120,12 @@ def get_current_shard_id():
     return max_id
 
 def create_ivfpq_index(dimension, model, sample_texts):
-    """
-    Létrehoz egy Product Quantization (IVFPQ) indexet.
-    A PQ drasztikusan csökkenti a memóriafogyasztást és tehermentesíti az öreg,
-    AVX2 nélküli AMD FX CPU-t a távolságszámításnál.
-    Az IVFPQ indexnek szüksége van egy kezdeti "train" fázisra pár száz vektorral.
-    """
-    nlist = 100 # Klaszterek száma (inverted file)
-    m = 8       # Subquantizers (dimenziók 8 részre osztása, byte-onkénti tárolás)
+    nlist = 100
+    m = 8
 
     quantizer = faiss.IndexFlatL2(dimension)
     index = faiss.IndexIVFPQ(quantizer, dimension, nlist, m, 8)
 
-    # Generálunk egy kis sample adathalmazt a betanításhoz a GPU-val
     print(f"[*] FAISS IVFPQ (Kvantált) index betanítása {len(sample_texts)} mintával (AVX2 hiány kiküszöbölése)...")
     sample_vectors = model.encode(sample_texts, convert_to_numpy=True)
     faiss.normalize_L2(sample_vectors)
@@ -154,7 +141,6 @@ def load_or_create_index(shard_id, dimension, model, sample_texts=None):
     else:
         print(f"[*] Új FAISS IVFPQ shard ({shard_id}) létrehozása...")
         if sample_texts is None:
-            # Ha nincs minta (mert rögtön indul), csinálunk egy fals mintát train-hez
             sample_texts = ["sample text padding"] * 300
         return create_ivfpq_index(dimension, model, sample_texts)
 
@@ -171,7 +157,6 @@ def save_state(conn, index, shard_id, cursor, fully_processed_paths):
     drop_system_caches()
 
     print(f"\n[*] Állapot elmentve (Shard: {shard_id}).")
-
 
 def main():
     if not os.path.exists(TARGET_DIR):
@@ -201,7 +186,6 @@ def main():
     model = SentenceTransformer('all-MiniLM-L6-v2', device='cuda')
     dimension = model.get_sentence_embedding_dimension()
 
-    # Kezdeti minta begyűjtése a FAISS betanításához (IVFPQ) az első ~300 szövegdarabból
     sample_texts = []
     for filepath in remaining_files[:100]:
         try:
@@ -256,11 +240,8 @@ def main():
             batch_texts = current_batch_chunks[:BATCH_SIZE]
             batch_paths = current_batch_paths[:BATCH_SIZE]
 
-            # Vektorizálás a GPU-n (gyors)
             vectors = model.encode(batch_texts, convert_to_numpy=True)
             faiss.normalize_L2(vectors)
-
-            # Beszúrás a CPU-s IVFPQ indexbe (ez mostantól AVX2 nélkül is gyors, mert int8-ba van kvantálva)
             index.add(vectors)
 
             cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(batch_paths, batch_texts))
@@ -276,7 +257,6 @@ def main():
         fully_processed_paths.add(filepath)
         files_processed_since_save += 1
 
-        # FAISS Shard váltás (ha az index elérte a megadott méretet, mentjük és újat nyitunk)
         if index.ntotal >= MAX_VECTORS_PER_SHARD:
             while len(current_batch_chunks) > 0:
                 chunk_sz = min(BATCH_SIZE, len(current_batch_chunks))
@@ -291,16 +271,13 @@ def main():
                 current_batch_chunks = current_batch_chunks[chunk_sz:]
                 current_batch_paths = current_batch_paths[chunk_sz:]
 
-            # Mentjük a jelenlegi teli shardot
             save_state(conn, index, current_shard_id, cursor, fully_processed_paths)
             fully_processed_paths.clear()
             files_processed_since_save = 0
 
-            # Újat nyitunk a RAM tehermentesítéséért
             current_shard_id += 1
             index = create_ivfpq_index(dimension, model, sample_texts)
 
-        # Normál periodikus mentés
         elif files_processed_since_save >= SAVE_INTERVAL_FILES or len(current_batch_chunks) >= MAX_CHUNKS_IN_RAM:
             while len(current_batch_chunks) > 0:
                 chunk_sz = min(BATCH_SIZE, len(current_batch_chunks))
