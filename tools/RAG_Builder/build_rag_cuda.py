@@ -10,7 +10,6 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
 
-# Konfiguráció a saját géphez
 TARGET_DIR = "/home/Jules/MX_LINUX_RAG"
 DB_PATH = "/home/Jules/MX_LINUX_RAG/mx_linux_hybrid.db"
 FAISS_PATH = "/home/Jules/MX_LINUX_RAG/mx_linux_vector.index"
@@ -19,8 +18,6 @@ EXTENSIONS = {'.py', '.c', '.h', '.cpp', '.sh', '.md', '.rst', '.json', '.yaml',
 
 CHUNK_SIZE = 1500
 BATCH_SIZE = 32
-# JAVÍTÁS: A memóriába olvasott szöveg-darabkák limitjének drasztikus csökkentése (2000 -> 500)
-# hogy sokkal gyakrabban ürítsen és mentesítse a garbage collectort.
 MAX_CHUNKS_IN_RAM = 500
 
 SHUTDOWN_REQUESTED = False
@@ -36,7 +33,6 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGINT, signal_handler)
 
 def shutdown_machine():
-    """Leállítja a fizikai gépet a feladat végeztével."""
     print("\n[!] Vektorizálás befejeződött. A gép leállítása (shutdown) indul...")
     try:
         cmd = "sudo shutdown -h now"
@@ -47,15 +43,16 @@ def shutdown_machine():
 def drop_system_caches():
     """
     Az operációs rendszer (Linux) agresszív pagecache ürítése.
-    Mivel 35GB forráskódot olvasunk be, a Linux hajlamos telepakolni
-    vele a RAM-ot (buff/cache), ami borzasztóan belassítja a gépet (thrashing).
-    A 'sync' lemezre írja a késleltetett fájlokat, a drop_caches pedig üríti a RAM-ot.
-    Ezt jelszó nélkül a pkexec/sudoers szabályok alapján próbálja futtatni.
+    Megakadályozza, hogy az I/O műveletek elfogyasszák a teljes 16GB RAM-ot.
     """
     try:
         subprocess.run("sync", shell=True, check=True)
-        # Az echo 1 üríti a pagecache-t
-        subprocess.run("sudo sh -c 'echo 1 > /proc/sys/vm/drop_caches'", shell=True, stderr=subprocess.DEVNULL)
+        # JAVÍTÁS (Code Review): "sudo -n" és "stdin=subprocess.DEVNULL" használata,
+        # hogy a script semmiképpen ne fagyjon le egy interaktív jelszókérésen (ha lejárt a sudo cache)!
+        # Ha a jelszó nélkül (nopasswd) nem engedélyezett a parancs, akkor csak csendben elbukik,
+        # de a gigantikus vektorizáló folyamat megszakítás nélkül fut tovább.
+        subprocess.run("sudo -n sh -c 'echo 1 > /proc/sys/vm/drop_caches'",
+                       shell=True, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
     except Exception:
         pass
 
@@ -112,11 +109,9 @@ def save_state(conn, index, faiss_path, cursor, fully_processed_paths):
     conn.commit()
     faiss.write_index(index, faiss_path)
 
-    # Python szintű memória optimalizáció
     gc.collect()
     torch.cuda.empty_cache()
 
-    # Rendszer szintű RAM cache ürítés a lassulás ellen
     drop_system_caches()
 
     print("\n[*] Állapot biztonságosan elmentve! Később folytathatod ugyanezzel a paranccsal.")
@@ -213,7 +208,6 @@ def main():
         fully_processed_paths.add(filepath)
         files_processed_since_save += 1
 
-        # JAVÍTÁS: A fájlok számának mentési küszöbét csökkentjük (1000 -> 300) a cache ürítés miatt
         if files_processed_since_save >= 300 or len(current_batch_chunks) >= MAX_CHUNKS_IN_RAM:
             while len(current_batch_chunks) > 0:
                 chunk_sz = min(BATCH_SIZE, len(current_batch_chunks))
