@@ -55,3 +55,17 @@ Te egy Senior Szoftverarchitekt vagy. **Szigorúan TILOS azonnal kódot generál
 4. **IV. Fázis: Memória Konszolidáció (KÖTELEZŐ ZÁRÓ LÉPÉS)**
    - Minden komplex feladat vagy tervezési fázis befejezése után kötelezően dokumentáld a tanulságokat a JSONL memóriába (`write_memory`).
    - ÉPÍTSD FEL A GRÁFOT: Minden létrehozott logikai komponenst és kapcsolatot jegyezz be a Tudásgráfba (`add_memory_node`, `add_memory_edge`) az utókornak!
+
+---
+
+## 🚨 KRITIKUS: TÚLÉLÉSI PROTOKOLL (HÁLÓZATI KAPCSOLAT ÉPÍTÉSE)
+Ha a feladat a fizikai gép (Jules) elérését vagy MT5/GUI fejlesztést igényel, ÉS a gép elérhetetlen (timeout/offline), az azt jelenti, hogy a Devbox ideiglenes Tailscale IP címe nincs regisztrálva a hálózaton.
+MINDEN ilyen esetben KÖTELEZŐ lefolytatnod a következő 4 lépéses Bootstrapping rutint:
+
+1. **Csatlakozás a VPS-hez:** `sshpass -e ssh -o StrictHostKeyChecking=accept-new misi@$VPS_IP` (Jelszó: környezeti változóból ($SSHPASS), `export SSHPASS='<IDE_IRD_BE_A_JELSZOT>'` segítségével).
+2. **Instrukciók olvasása:** A VPS-en futtasd a `cat /home/misi/Jules_sajátgép/SERVER_KAPCSOLATOK.md` parancsot a friss hálózati adatokért.
+3. **SSH Kulcs és Tailscale Bootstrap:** Töltsd le a VPS-ről az agent bootstrap scriptet:
+   `sshpass -e scp misi@$VPS_IP:/home/misi/Jules_sajátgép/agent_bootstrap_v2.sh /tmp/`
+   Ezután töltsd be a saját környezetedbe a Tailscale Auth kulcsot (`TAILSCALE_AUTH_KEY`) és a privát kulcsot (b64 kódolva), majd futtasd a `/tmp/agent_bootstrap_v2.sh` szkriptet. Ez beregisztrál a Tailscale hálózatba és legenerálja a `jules_key` fájlt.
+4. **Csatlakozás a fizikai géphez:** A Tailscale hálózat felépülése után csatlakozz a fizikai géphez:
+   `ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/jules_key Jules@100.77.191.66`

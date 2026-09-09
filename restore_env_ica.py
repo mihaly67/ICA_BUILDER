@@ -64,8 +64,27 @@ def register_rag_environments():
     else:
         print("✅ RAG útvonalak már regisztrálva vannak.")
 
+def check_physical_machine_status():
+    """
+    Meghívja a check_jules_online.py szkriptet, ami ellenőrzi a fizikai gép (100.77.191.66) állapotát.
+    Ha offline, várakozik a bekapcsolásra.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    checker_path = os.path.join(script_dir, "tools", "check_jules_online.py")
+
+    if os.path.exists(checker_path):
+        print("\n🔍 Fizikai gép (Jules) hálózati ellenőrzése...")
+        try:
+            # Subprocess run without capture_output so the user can see the progress/prompts directly
+            subprocess.run([sys.executable, checker_path])
+        except KeyboardInterrupt:
+            print("\n[!] Gép ellenőrzés megszakítva.")
+            pass
+
+
 def main():
     print("=== 🐝 JULES ICA SYSTEM INITIALIZATION ===")
+    check_physical_machine_status()
     install_dependencies()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))

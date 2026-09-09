@@ -1,1 +1,5 @@
 2026-06-22 17:04:47,720 - Sikeres szinkronizáció a VPS-re.
+2026-09-09 17:10:19,264 - SSH_PASS környezeti változó hiányzik, szinkronizáció megszakítva.
+2026-09-09 17:10:19,275 - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-09 17:10:19,281 - Added job "sync_memory" to job store "default"
+2026-09-09 17:10:19,281 - Scheduler started
