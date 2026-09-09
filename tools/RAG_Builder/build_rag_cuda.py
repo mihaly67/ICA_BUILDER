@@ -12,7 +12,6 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
 
-# Konfiguráció
 TARGET_DIR = "/home/Jules/MX_LINUX_RAG"
 DB_PATH = "/home/Jules/MX_LINUX_RAG/mx_linux_hybrid.db"
 FAISS_BASE_PATH = "/home/Jules/MX_LINUX_RAG/mx_linux_vector"
@@ -22,7 +21,6 @@ EXTENSIONS = {'.py', '.c', '.h', '.cpp', '.sh', '.md', '.rst', '.json', '.yaml',
 CHUNK_SIZE = 1500
 BATCH_SIZE = 96
 MAX_CHUNKS_IN_RAM = 500
-
 MAX_VECTORS_PER_SHARD = 500000
 
 SHUTDOWN_REQUESTED = False
@@ -53,23 +51,16 @@ def drop_system_caches():
     except Exception:
         pass
 
-def get_files_and_repos(directory):
-    file_list = []
-    vectorized_repos = set()
+# JAVÍTÁS 1: A get_files generátorrá alakítása!
+# Mivel 713,000 fájl memóriában tartása (és az os.walk futtatása egyszerre) feleslegesen lassít és szemetel.
+def get_files_generator(directory):
     for root, _, files in os.walk(directory):
         if '.git' in root or 'node_modules' in root or '__pycache__' in root:
             continue
         for file in files:
             ext = os.path.splitext(file)[1].lower()
             if ext in EXTENSIONS:
-                full_path = os.path.join(root, file)
-                file_list.append(full_path)
-
-                rel_path = os.path.relpath(root, directory)
-                repo_name = rel_path.split(os.sep)[0]
-                vectorized_repos.add(repo_name)
-
-    return file_list, vectorized_repos
+                yield os.path.join(root, file)
 
 def chunk_text(text, max_length):
     chunks = []
@@ -79,9 +70,13 @@ def chunk_text(text, max_length):
 
 def init_db(db_path):
     conn = sqlite3.connect(db_path)
+
+    # JAVÍTÁS 2: FTS5 lassulás ellen EXTRÉM SQLite PRAGMÁK
     conn.execute('PRAGMA journal_mode = WAL;')
-    conn.execute('PRAGMA synchronous = NORMAL;') # OFF túlzott RAM foglalást okozott a 4.5 GB DB-nél
-    conn.execute('PRAGMA cache_size = 50000;')
+    conn.execute('PRAGMA synchronous = OFF;') # Kikapcsoljuk az Fsync-et, az I/O blokkolást teljesen megszünteti
+    conn.execute('PRAGMA cache_size = -200000;') # 200MB RAM dedikálása az SQLite-nak a thrashing ellen
+    conn.execute('PRAGMA temp_store = MEMORY;')
+    conn.execute('PRAGMA mmap_size = 30000000000;') # MMAP bekapcsolása gigantikus DB-hez (30GB-ig)
 
     cursor = conn.cursor()
     cursor.execute('''
@@ -151,10 +146,12 @@ def load_or_create_index(shard_id, dimension, model, sample_texts=None):
         return create_ivfpq_index(dimension, model, sample_texts)
 
 def save_state(conn, index, shard_id, cursor, fully_processed_paths):
+    # Tranzakció a DB-nek, hogy a sebesség iszonyatos maradjon
+    cursor.execute("BEGIN TRANSACTION;")
     for p in fully_processed_paths:
         cursor.execute("INSERT OR IGNORE INTO rag_meta (path) VALUES (?)", (p,))
-
     conn.commit()
+
     path = f"{FAISS_BASE_PATH}_{shard_id}.index"
     faiss.write_index(index, path)
 
@@ -169,20 +166,32 @@ def main():
         print(f"Hiba: A {TARGET_DIR} mappa nem létezik.")
         return
 
-    print(f"[*] Fájlok keresése a {TARGET_DIR} könyvtárban...")
-    files, repos = get_files_and_repos(TARGET_DIR)
+    print("[*] SQLite adatbázis inicializálása EXTRÉM I/O sebességgel (WAL, MMAP, Sync=OFF)...")
+    conn, cursor = init_db(DB_PATH)
+
+    processed_files = get_processed_files(cursor)
+
+    # Listázzuk a fájlokat gyorsan az elején csak a számlálóhoz
+    print(f"[*] Fájlfa bejárása...")
+    all_files_count = 0
+    remaining_files = []
+
+    for f in get_files_generator(TARGET_DIR):
+        all_files_count += 1
+        if f not in processed_files:
+            remaining_files.append(f)
+
+    # Gyűjtsünk össze repókat a log txt-hez
+    repos = set()
+    for f in remaining_files[:5000]: # Elég az első párból kitalálni a repókat
+        rel_path = os.path.relpath(f, TARGET_DIR)
+        repos.add(rel_path.split(os.sep)[0])
 
     with open(REPO_LIST_PATH, 'w', encoding='utf-8') as f:
         for r in sorted(repos):
             f.write(r + '\n')
 
-    print("[*] SQLite adatbázis inicializálása extrém I/O sebességgel...")
-    conn, cursor = init_db(DB_PATH)
-
-    processed_files = get_processed_files(cursor)
-    remaining_files = [f for f in files if f not in processed_files]
-
-    print(f"[*] Összes fájl: {len(files)} | Már feldolgozva: {len(processed_files)} | Hátralévő: {len(remaining_files)}")
+    print(f"[*] Összes fájl: {all_files_count} | Már feldolgozva: {len(processed_files)} | Hátralévő: {len(remaining_files)}")
     if len(remaining_files) == 0:
         print("[*] Minden fájl feldolgozva!")
         shutdown_machine()
@@ -212,17 +221,15 @@ def main():
 
     print("[*] Szövegek előkészítése és vektorizálása (Sharding és Kvantálás aktív)...")
 
-    # JAVÍTÁS 1: deque használata az O(N^2) listslicing CPU blokkolás elkerülésére!
-    # Ha hatalmas fájl (több ezer chunk) jön, a python `lista = lista[96:]` egyre lassabb lesz.
-    # A deque-nál a balról pop()-olás O(1) komplexitású.
     current_batch_chunks = deque()
     current_batch_paths = deque()
 
     fully_processed_paths = set()
     files_processed_since_save = 0
-    # JAVÍTÁS 2: FTS5 lassulás ellen a FAISS mentés még mindig ritka (2000),
-    # de a SQLite-ba gyakrabban committolunk, hogy a temp_store ne szakadjon meg a memóriában.
     SAVE_INTERVAL_FILES = 2000
+
+    # Explicit SQLite tranzakció indul! Ezzel oldjuk meg a lelassulást.
+    cursor.execute("BEGIN TRANSACTION;")
 
     for filepath in tqdm(remaining_files, desc="Fájlok feldolgozása", miniters=10):
         if SHUTDOWN_REQUESTED:
@@ -257,10 +264,6 @@ def main():
             index.add(vectors)
 
             cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(batch_paths, batch_texts))
-            # JAVÍTÁS 3: Mini-commit az FTS5 indexnek. Nem írjuk le a FAISS-t, de a DB-t commitoljuk,
-            # hogy ne épüljön fel gigantikus O(N^2) tranzakciós fa az SQLite memóriájában!
-            if len(fully_processed_paths) % 100 == 0:
-                conn.commit()
 
         if SHUTDOWN_REQUESTED:
             current_batch_chunks.clear()
@@ -269,6 +272,11 @@ def main():
 
         fully_processed_paths.add(filepath)
         files_processed_since_save += 1
+
+        # Periodikus mini-commit az adatbázis megfagyása ellen (itt zárjuk le a tranzakciót és indítunk újat)
+        if len(fully_processed_paths) % 100 == 0:
+            conn.commit()
+            cursor.execute("BEGIN TRANSACTION;")
 
         if index.ntotal >= MAX_VECTORS_PER_SHARD:
             while len(current_batch_chunks) > 0:
@@ -281,12 +289,14 @@ def main():
                 index.add(vectors)
                 cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(batch_paths, batch_texts))
 
+            conn.commit() # Lezárjuk a futó tranzakciót a save előtt
             save_state(conn, index, current_shard_id, cursor, fully_processed_paths)
             fully_processed_paths.clear()
             files_processed_since_save = 0
 
             current_shard_id += 1
             index = create_ivfpq_index(dimension, model, sample_texts)
+            cursor.execute("BEGIN TRANSACTION;") # Új tranzakció a következő shardhoz
 
         elif files_processed_since_save >= SAVE_INTERVAL_FILES or len(current_batch_chunks) >= MAX_CHUNKS_IN_RAM:
             while len(current_batch_chunks) > 0:
@@ -299,9 +309,11 @@ def main():
                 index.add(vectors)
                 cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(batch_paths, batch_texts))
 
+            conn.commit() # Tranzakció lezárás a save előtt
             save_state(conn, index, current_shard_id, cursor, fully_processed_paths)
             fully_processed_paths.clear()
             files_processed_since_save = 0
+            cursor.execute("BEGIN TRANSACTION;")
 
     if len(current_batch_chunks) > 0 and not SHUTDOWN_REQUESTED:
         while len(current_batch_chunks) > 0:
@@ -314,6 +326,7 @@ def main():
             index.add(vectors)
             cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(batch_paths, batch_texts))
 
+    conn.commit()
     save_state(conn, index, current_shard_id, cursor, fully_processed_paths)
 
     if not SHUTDOWN_REQUESTED:
