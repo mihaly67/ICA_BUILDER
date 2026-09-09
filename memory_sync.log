@@ -34,3 +34,4 @@
 2026-09-09 18:30:19,278 - SSH_PASS környezeti változó hiányzik, szinkronizáció megszakítva.
 2026-09-09 18:30:19,278 - Job "sync_memory (trigger: interval[0:05:00], next run at: 2026-09-09 18:35:19 UTC)" executed successfully
 2026-09-09 18:51:04,397 - Run time of job "sync_memory (trigger: interval[0:05:00], next run at: 2026-09-09 18:55:19 UTC)" was missed by 0:00:45.116461
+2026-09-09 19:06:09,137 - Run time of job "sync_memory (trigger: interval[0:05:00], next run at: 2026-09-09 19:10:19 UTC)" was missed by 0:00:49.857695

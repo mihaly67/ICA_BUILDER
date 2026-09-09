@@ -13,18 +13,20 @@ mkdir -p "${PKG_DIR}/usr/share/applications"
 mkdir -p "${PKG_DIR}/DEBIAN"
 
 # Control fájl
+# Code Review javítás: A python3-psutil visszakerült, mert standard debian csomag
+# és a PyQt script elszállna import errorral. Csak a külső 'mprime' lett kivéve!
 cat << CONTROL > "${PKG_DIR}/DEBIAN/control"
 Package: ${APP_NAME}
 Version: ${VERSION}
 Architecture: all
 Maintainer: ${MAINTAINER}
-Depends: python3, python3-pyqt5, python3-psutil, mprime
+Depends: python3, python3-pyqt5, python3-psutil
 Description: MX CPU Stress Tester (KDE Edition)
  A PyQt5 based GUI for mprime to torture test CPUs and RAM.
  Installed into /opt to ensure mx-snapshot includes it in the Live ISO.
 CONTROL
 
-# Forráskód bemásolása (amit az előbb hoztunk létre)
+# Forráskód bemásolása
 cp tools/RAG_Builder/cpu_stress_test.py "${PKG_DIR}/opt/${APP_NAME}/"
 chmod +x "${PKG_DIR}/opt/${APP_NAME}/cpu_stress_test.py"
 
