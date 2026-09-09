@@ -6,6 +6,7 @@ import gc
 import torch
 import subprocess
 import glob
+from collections import deque
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 import faiss
@@ -79,9 +80,8 @@ def chunk_text(text, max_length):
 def init_db(db_path):
     conn = sqlite3.connect(db_path)
     conn.execute('PRAGMA journal_mode = WAL;')
-    conn.execute('PRAGMA synchronous = OFF;')
-    conn.execute('PRAGMA cache_size = 100000;')
-    conn.execute('PRAGMA temp_store = MEMORY;')
+    conn.execute('PRAGMA synchronous = NORMAL;') # OFF túlzott RAM foglalást okozott a 4.5 GB DB-nél
+    conn.execute('PRAGMA cache_size = 50000;')
 
     cursor = conn.cursor()
     cursor.execute('''
@@ -119,17 +119,14 @@ def get_current_shard_id():
     return max_id
 
 def create_ivfpq_index(dimension, model, sample_texts):
-    # nlist a klaszterek száma (Voronoi cellák). Ha ez nagy, nagyon sok minta kell!
     nlist = 100
     m = 8
 
     quantizer = faiss.IndexFlatL2(dimension)
     index = faiss.IndexIVFPQ(quantizer, dimension, nlist, m, 8)
 
-    print(f"[*] FAISS IVFPQ (Kvantált) index betanítása {len(sample_texts)} mintával (türelem)...")
+    print(f"[*] FAISS IVFPQ (Kvantált) index betanítása {len(sample_texts)} mintával...")
 
-    # Mivel a minta ~4500 elemű, a GPU encoder is lefagyhat, ha egyben próbáljuk.
-    # Ezért a betanító mintát is batch-elve kódoljuk!
     sample_vectors = []
     for i in range(0, len(sample_texts), BATCH_SIZE):
         batch = sample_texts[i:i+BATCH_SIZE]
@@ -179,7 +176,7 @@ def main():
         for r in sorted(repos):
             f.write(r + '\n')
 
-    print("[*] SQLite adatbázis inicializálása extrém I/O sebességgel (WAL, Sync=OFF)...")
+    print("[*] SQLite adatbázis inicializálása extrém I/O sebességgel...")
     conn, cursor = init_db(DB_PATH)
 
     processed_files = get_processed_files(cursor)
@@ -195,7 +192,6 @@ def main():
     model = SentenceTransformer('all-MiniLM-L6-v2', device='cuda')
     dimension = model.get_sentence_embedding_dimension()
 
-    # --- JAVÍTÁS: A mintaszövegek felduzzasztása (FAISS Training Issue) ---
     sample_texts = []
     for filepath in remaining_files:
         try:
@@ -203,7 +199,6 @@ def main():
                 c = f.read()
                 if c.strip():
                     sample_texts.extend(chunk_text(c, CHUNK_SIZE))
-            # Hibaüzenet szerint minimum 3900 kell a kMeans clusteringhez
             if len(sample_texts) > 4500:
                 sample_texts = sample_texts[:4500]
                 break
@@ -211,24 +206,28 @@ def main():
             pass
     if len(sample_texts) < 4500:
         sample_texts.extend(["padding data for fast text embedding generation in python"] * (4500 - len(sample_texts)))
-    # ----------------------------------------------------------------------
 
     current_shard_id = get_current_shard_id()
     index = load_or_create_index(current_shard_id, dimension, model, sample_texts)
 
     print("[*] Szövegek előkészítése és vektorizálása (Sharding és Kvantálás aktív)...")
 
-    current_batch_chunks = []
-    current_batch_paths = []
+    # JAVÍTÁS 1: deque használata az O(N^2) listslicing CPU blokkolás elkerülésére!
+    # Ha hatalmas fájl (több ezer chunk) jön, a python `lista = lista[96:]` egyre lassabb lesz.
+    # A deque-nál a balról pop()-olás O(1) komplexitású.
+    current_batch_chunks = deque()
+    current_batch_paths = deque()
 
     fully_processed_paths = set()
     files_processed_since_save = 0
+    # JAVÍTÁS 2: FTS5 lassulás ellen a FAISS mentés még mindig ritka (2000),
+    # de a SQLite-ba gyakrabban committolunk, hogy a temp_store ne szakadjon meg a memóriában.
     SAVE_INTERVAL_FILES = 2000
 
     for filepath in tqdm(remaining_files, desc="Fájlok feldolgozása", miniters=10):
         if SHUTDOWN_REQUESTED:
-            current_batch_chunks = []
-            current_batch_paths = []
+            current_batch_chunks.clear()
+            current_batch_paths.clear()
             break
 
         try:
@@ -250,21 +249,22 @@ def main():
             if SHUTDOWN_REQUESTED:
                 break
 
-            batch_texts = current_batch_chunks[:BATCH_SIZE]
-            batch_paths = current_batch_paths[:BATCH_SIZE]
+            batch_texts = [current_batch_chunks.popleft() for _ in range(BATCH_SIZE)]
+            batch_paths = [current_batch_paths.popleft() for _ in range(BATCH_SIZE)]
 
             vectors = model.encode(batch_texts, convert_to_numpy=True)
             faiss.normalize_L2(vectors)
             index.add(vectors)
 
             cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(batch_paths, batch_texts))
-
-            current_batch_chunks = current_batch_chunks[BATCH_SIZE:]
-            current_batch_paths = current_batch_paths[BATCH_SIZE:]
+            # JAVÍTÁS 3: Mini-commit az FTS5 indexnek. Nem írjuk le a FAISS-t, de a DB-t commitoljuk,
+            # hogy ne épüljön fel gigantikus O(N^2) tranzakciós fa az SQLite memóriájában!
+            if len(fully_processed_paths) % 100 == 0:
+                conn.commit()
 
         if SHUTDOWN_REQUESTED:
-            current_batch_chunks = []
-            current_batch_paths = []
+            current_batch_chunks.clear()
+            current_batch_paths.clear()
             break
 
         fully_processed_paths.add(filepath)
@@ -273,16 +273,13 @@ def main():
         if index.ntotal >= MAX_VECTORS_PER_SHARD:
             while len(current_batch_chunks) > 0:
                 chunk_sz = min(BATCH_SIZE, len(current_batch_chunks))
-                batch_texts = current_batch_chunks[:chunk_sz]
-                batch_paths = current_batch_paths[:chunk_sz]
+                batch_texts = [current_batch_chunks.popleft() for _ in range(chunk_sz)]
+                batch_paths = [current_batch_paths.popleft() for _ in range(chunk_sz)]
 
                 vectors = model.encode(batch_texts, convert_to_numpy=True)
                 faiss.normalize_L2(vectors)
                 index.add(vectors)
                 cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(batch_paths, batch_texts))
-
-                current_batch_chunks = current_batch_chunks[chunk_sz:]
-                current_batch_paths = current_batch_paths[chunk_sz:]
 
             save_state(conn, index, current_shard_id, cursor, fully_processed_paths)
             fully_processed_paths.clear()
@@ -294,16 +291,13 @@ def main():
         elif files_processed_since_save >= SAVE_INTERVAL_FILES or len(current_batch_chunks) >= MAX_CHUNKS_IN_RAM:
             while len(current_batch_chunks) > 0:
                 chunk_sz = min(BATCH_SIZE, len(current_batch_chunks))
-                batch_texts = current_batch_chunks[:chunk_sz]
-                batch_paths = current_batch_paths[:chunk_sz]
+                batch_texts = [current_batch_chunks.popleft() for _ in range(chunk_sz)]
+                batch_paths = [current_batch_paths.popleft() for _ in range(chunk_sz)]
 
                 vectors = model.encode(batch_texts, convert_to_numpy=True)
                 faiss.normalize_L2(vectors)
                 index.add(vectors)
                 cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(batch_paths, batch_texts))
-
-                current_batch_chunks = current_batch_chunks[chunk_sz:]
-                current_batch_paths = current_batch_paths[chunk_sz:]
 
             save_state(conn, index, current_shard_id, cursor, fully_processed_paths)
             fully_processed_paths.clear()
@@ -312,16 +306,13 @@ def main():
     if len(current_batch_chunks) > 0 and not SHUTDOWN_REQUESTED:
         while len(current_batch_chunks) > 0:
             chunk_sz = min(BATCH_SIZE, len(current_batch_chunks))
-            batch_texts = current_batch_chunks[:chunk_sz]
-            batch_paths = current_batch_paths[:chunk_sz]
+            batch_texts = [current_batch_chunks.popleft() for _ in range(chunk_sz)]
+            batch_paths = [current_batch_paths.popleft() for _ in range(chunk_sz)]
 
             vectors = model.encode(batch_texts, convert_to_numpy=True)
             faiss.normalize_L2(vectors)
             index.add(vectors)
             cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(batch_paths, batch_texts))
-
-            current_batch_chunks = current_batch_chunks[chunk_sz:]
-            current_batch_paths = current_batch_paths[chunk_sz:]
 
     save_state(conn, index, current_shard_id, cursor, fully_processed_paths)
 
