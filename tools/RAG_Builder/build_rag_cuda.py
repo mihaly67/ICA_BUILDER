@@ -37,8 +37,6 @@ def shutdown_machine():
     """Leállítja a fizikai gépet a feladat végeztével."""
     print("\n[!] Vektorizálás befejeződött. A gép leállítása (shutdown) indul...")
     try:
-        # Biztonsági hiba (Code Review): A plaintext jelszó (1104) eltávolítva.
-        # A fizikai gép pkexec/sudoers szabályaira támaszkodunk, hogy végrehajtsa.
         cmd = "sudo shutdown -h now"
         subprocess.run(cmd, shell=True, check=True)
     except Exception as e:
@@ -95,8 +93,9 @@ def save_state(conn, index, faiss_path, cursor, fully_processed_paths):
         cursor.execute("INSERT OR IGNORE INTO rag_meta (path) VALUES (?)", (p,))
 
     conn.commit()
-    cpu_index_to_save = faiss.index_gpu_to_cpu(index)
-    faiss.write_index(cpu_index_to_save, faiss_path)
+    # P2000 (Pascal) inkompatibilitás (CUDA 209 hiba) miatt a FAISS indexet CPU-n tartjuk,
+    # így már nem kell gpu_to_cpu konverzió mentéskor sem!
+    faiss.write_index(index, faiss_path)
 
     gc.collect()
     torch.cuda.empty_cache()
@@ -104,7 +103,11 @@ def save_state(conn, index, faiss_path, cursor, fully_processed_paths):
     print("\n[*] Állapot biztonságosan elmentve! Később folytathatod ugyanezzel a paranccsal.")
 
 def process_batch(model, index, cursor, batch_chunks, batch_paths):
+    # A szöveg vektorizálása (SentenceTransformer) továbbra is a CUDA-n pörög, hiszen
+    # a modell be van töltve a GPU-ba. (Ez a leginkább CPU-igényes rész amúgy)
     vectors = model.encode(batch_chunks, convert_to_numpy=True)
+
+    # A FAISS normalizálás és beillesztés történik csak a CPU-n (Ez villámgyors amúgy is)
     faiss.normalize_L2(vectors)
     index.add(vectors)
 
@@ -136,18 +139,16 @@ def main():
         return
 
     print("[*] SentenceTransformer modell betöltése GPU-n (CUDA)...")
+    # A legnehezebb feladat (vektorizálás) marad a GPU-n!
     model = SentenceTransformer('all-MiniLM-L6-v2', device='cuda')
     dimension = model.get_sentence_embedding_dimension()
 
-    res = faiss.StandardGpuResources()
     if os.path.exists(FAISS_PATH):
         print("[*] Meglévő FAISS index betöltése a lemezről...")
-        cpu_index = faiss.read_index(FAISS_PATH)
+        index = faiss.read_index(FAISS_PATH)
     else:
         print("[*] Új FAISS index létrehozása...")
-        cpu_index = faiss.IndexFlatL2(dimension)
-
-    index = faiss.index_cpu_to_gpu(res, 0, cpu_index)
+        index = faiss.IndexFlatL2(dimension)
 
     print("[*] Szövegek előkészítése és vektorizálása...")
 

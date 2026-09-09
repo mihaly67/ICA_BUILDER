@@ -14,9 +14,10 @@ pip install --upgrade pip
 # Ha a sentence-transformers-t telepítjük előbb, akkor a pip alapértelmezetten lerántja a PyPI cu12-es (3GB+) csomagjait!
 pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu118
 
-# A 'transformers' csomagból downgrade-elünk a 4.40.0 verzióra, mert az 5.x letiltja a PyTorch-ot, ha a verziója < 2.5
-# A 'sentence-transformers'-t is a 2.7.0 verzióra pinneljük az inkompatibilitások miatt
-pip install --no-cache-dir transformers==4.40.0 sentence-transformers==2.7.0 tqdm faiss-gpu
+# A Quadro P2000 (Pascal) architektúra miatt a faiss-gpu hibát (CUDA 209) dob,
+# ezért faiss-cpu-ra váltunk! A SentenceTransformer így is a GPU-n pörög!
+pip uninstall -y faiss-gpu || true
+pip install --no-cache-dir transformers==4.40.0 sentence-transformers==2.7.0 tqdm faiss-cpu
 
 echo "[*] Függőségek telepítve CUDA támogatással! A RAG építő szkript futtatásához indítsd el:"
 echo "source $VENV_PATH/bin/activate"
