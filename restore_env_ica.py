@@ -97,6 +97,15 @@ def main():
         print("\n📖 [AUTO-KONTEXTUS] A korábbi események és memóriák betöltése az új Session-höz:")
         subprocess.run([sys.executable, memory_manager_path, "--action", "read", "--limit", "3"])
 
+    # Amnézia elleni daemon (Memory Reminder) indítása
+    reminder_script = os.path.join(script_dir, "ENVIRONMENT_SETUP", "memory_reminder.py")
+    if os.path.exists(reminder_script):
+        try:
+            output = subprocess.check_output(["pgrep", "-f", "memory_reminder.py"]).decode("utf-8")
+        except subprocess.CalledProcessError:
+            subprocess.Popen([sys.executable, reminder_script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print("✅ Amnézia elleni szolgáltatás elindítva.")
+
     # Start Memory Sync Background Process
     sync_script_path = os.path.join(script_dir, "tools", "sync_memory_to_vps.py")
     if os.path.exists(sync_script_path):
