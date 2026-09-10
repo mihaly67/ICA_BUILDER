@@ -80,3 +80,10 @@
 2026-09-10 04:35:19,284 - Running job "sync_memory (trigger: interval[0:05:00], next run at: 2026-09-10 04:40:19 UTC)" (scheduled at 2026-09-10 04:35:19.275398+00:00)
 2026-09-10 04:35:19,287 - SSH_PASS környezeti változó hiányzik, szinkronizáció megszakítva.
 2026-09-10 04:35:19,287 - Job "sync_memory (trigger: interval[0:05:00], next run at: 2026-09-10 04:40:19 UTC)" executed successfully
+2026-09-10 16:41:37,464 - Run time of job "sync_memory (trigger: interval[0:05:00], next run at: 2026-09-10 16:45:19 UTC)" was missed by 0:01:18.182943
+2026-09-10 16:45:19,283 - Running job "sync_memory (trigger: interval[0:05:00], next run at: 2026-09-10 16:50:19 UTC)" (scheduled at 2026-09-10 16:45:19.275398+00:00)
+2026-09-10 16:45:19,285 - SSH_PASS környezeti változó hiányzik, szinkronizáció megszakítva.
+2026-09-10 16:45:19,286 - Job "sync_memory (trigger: interval[0:05:00], next run at: 2026-09-10 16:50:19 UTC)" executed successfully
+2026-09-10 16:50:19,276 - Running job "sync_memory (trigger: interval[0:05:00], next run at: 2026-09-10 16:55:19 UTC)" (scheduled at 2026-09-10 16:50:19.275398+00:00)
+2026-09-10 16:50:19,276 - SSH_PASS környezeti változó hiányzik, szinkronizáció megszakítva.
+2026-09-10 16:50:19,277 - Job "sync_memory (trigger: interval[0:05:00], next run at: 2026-09-10 16:55:19 UTC)" executed successfully
