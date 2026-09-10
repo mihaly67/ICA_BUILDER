@@ -20,10 +20,10 @@ FAISS_BASE_PATH = "/home/Jules/MX_LINUX_RAG/mx_linux_vector"
 REPO_LIST_PATH = "/home/Jules/MX_LINUX_RAG/vectorized_repos.txt"
 EXTENSIONS = {'.py', '.c', '.h', '.cpp', '.sh', '.md', '.rst', '.json', '.yaml', '.txt', '.conf', '.mk', '.dts', '.dtsi'}
 
-# === OPTIMALIZÁCIÓ INTEL XEON E5-1620 V3 HARDVERRE (AVX2, 32GB RAM Quad-Channel, PCIe 3.0) ===
 CHUNK_SIZE = 1500
-BATCH_SIZE = 128            # PCIe 3.0 és P2000 elbírja a nagyobb adatátvitelt!
-MAX_VECTORS_PER_SHARD = 1000000 # 32GB RAM esetén az index fájlok nyugodtan nőhetnek 1 millió vektorig!
+BATCH_SIZE = 128
+MAX_VECTORS_PER_SHARD = 1000000
+RESTART_LIMIT = 20000  # Mennyi fájlt dolgozzon fel mielőtt szándékosan leáll (újraindításhoz)
 
 SHUTDOWN_REQUESTED = False
 
@@ -36,7 +36,7 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGINT, signal_handler)
 
 def shutdown_machine():
-    print("\n[!] Vektorizálás befejeződött. A gép leállítása (shutdown) indul...")
+    print("\n[!] Vektorizálás teljesen befejeződött. A gép leállítása (shutdown) indul...")
     try:
         cmd = "sudo shutdown -h now"
         subprocess.run(cmd, shell=True, check=True)
@@ -66,11 +66,9 @@ def chunk_text(text, max_length):
         chunks.append(text[i:i+max_length])
     return chunks
 
-# PRODUCER THREAD: Fájlok beolvasása, ami a Quad-Channel 32GB RAM és Xeon miatt villámgyors lesz
 def file_reader_thread(remaining_files, data_queue):
     for filepath in remaining_files:
         if SHUTDOWN_REQUESTED:
-            # Code Review: Ha leállás van, gyorsan ürítjük a szálat
             break
         try:
             with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
@@ -90,7 +88,6 @@ def init_db(db_path):
     conn = sqlite3.connect(db_path)
     conn.execute('PRAGMA journal_mode = WAL;')
     conn.execute('PRAGMA synchronous = OFF;')
-    # 32GB RAM esetén 500MB is lehet az SQLite cache a villámgyors I/O-ért!
     conn.execute('PRAGMA cache_size = -500000;')
     conn.execute('PRAGMA temp_store = MEMORY;')
 
@@ -147,31 +144,30 @@ def main():
     remaining_files = []
     repos = set()
 
+    # Ezzel kiküszöböljük, hogy a generátor 18 másodpercig elemezze az egészet minden iterációnál
     for f in get_files_generator(TARGET_DIR):
         all_files_count += 1
         if f not in processed_files:
             remaining_files.append(f)
             rel_path = os.path.relpath(f, TARGET_DIR)
             repos.add(rel_path.split(os.sep)[0])
+            if len(remaining_files) >= RESTART_LIMIT: # Ne is listázzon többet, ha elértük a limitet! (gyorsabb újraindulás)
+                break
 
-    with open(REPO_LIST_PATH, 'w', encoding='utf-8') as f:
+    with open(REPO_LIST_PATH, 'a', encoding='utf-8') as f:
         for r in sorted(repos):
             f.write(r + '\n')
 
-    print(f"[*] Összes fájl: {all_files_count} | Már feldolgozva: {len(processed_files)} | Hátralévő: {len(remaining_files)}")
+    print(f"[*] Fájl statisztika -> Összes (becsült): {all_files_count} | Már feldolgozva: {len(processed_files)} | Aktuális menetben feldolgozandó: {len(remaining_files)}")
+
     if not remaining_files:
-        print("[*] Minden fájl feldolgozva!")
+        print("[*] Minden fájl feldolgozva a teljes könyvtárban!")
         shutdown_machine()
         return
 
     print("[*] SentenceTransformer modell betöltése GPU-n (CUDA)...")
     model = SentenceTransformer('all-MiniLM-L6-v2', device='cuda')
     dimension = model.get_sentence_embedding_dimension()
-
-    # === VISSZATÉRÉS AZ INDEXFLATL2-RE AVX2 MELLETT ===
-    # A Xeon E5-1620 V3 processzor támogatja az AVX2 utasításkészletet.
-    # Így a FlatL2 (veszteségmentes) indexelés villámgyors lesz a CPU-n!
-    # Nincs szükség többé az IVFPQ kvantálásra és hosszas betanításra (train).
 
     current_shard_id = get_current_shard_id()
     path = f"{FAISS_BASE_PATH}_{current_shard_id}.index"
@@ -182,10 +178,7 @@ def main():
         print(f"[*] Új FAISS IndexFlatL2 shard ({current_shard_id}) létrehozása (AVX2 optimalizált)...")
         index = faiss.IndexFlatL2(dimension)
 
-    # Indítjuk a Producer szálat (I/O olvasás és chunkolás a háttérben)
-    # A 32GB RAM miatt hatalmas sort csinálhatunk az I/O várakozás nullázásához
     data_queue = queue.Queue(maxsize=50000)
-    # Code Review javítás: daemon szál, hogy kilépéskor ne lógjon a levegőben a script
     producer = threading.Thread(target=file_reader_thread, args=(remaining_files, data_queue), daemon=True)
     producer.start()
 
@@ -196,11 +189,11 @@ def main():
     cursor.execute("BEGIN TRANSACTION;")
 
     pbar = tqdm(total=len(remaining_files), desc="Fájlok feldolgozása")
+    processed_files_in_batch = 0
+    total_processed_this_run = 0
 
     while True:
         if SHUTDOWN_REQUESTED:
-            # Code Review javítás: Megszakítás esetén ürítjük a sort,
-            # és csak azokat a fájlokat mentjük, amik már GARANTÁLTAN bekerültek a batchbe és az FTS-be!
             break
 
         try:
@@ -215,33 +208,34 @@ def main():
 
         if status == 'SKIP':
             fully_processed_paths.add(filepath)
-            pbar.update(1)
-            continue
+            processed_files_in_batch += 1
+            total_processed_this_run += 1
+        else:
+            current_batch_chunks.extend(chunks)
+            current_batch_paths.extend([filepath] * len(chunks))
+            processed_files_in_batch += 1
+            total_processed_this_run += 1
 
-        # Adatok betöltése a batch-be
-        for chunk in chunks:
-            current_batch_chunks.append(chunk)
-            current_batch_paths.append(filepath)
+        if processed_files_in_batch >= 50 or len(current_batch_chunks) >= BATCH_SIZE:
+            pbar.update(processed_files_in_batch)
+            processed_files_in_batch = 0
 
-            # Ha megtelt a batch, azonnal CUDA GPU execute
-            if len(current_batch_chunks) >= BATCH_SIZE:
-                vectors = model.encode(current_batch_chunks, batch_size=BATCH_SIZE, convert_to_numpy=True, show_progress_bar=False)
-                faiss.normalize_L2(vectors)
-                index.add(vectors)
+        while len(current_batch_chunks) >= BATCH_SIZE:
+            chunk_slice = current_batch_chunks[:BATCH_SIZE]
+            path_slice = current_batch_paths[:BATCH_SIZE]
 
-                cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(current_batch_paths, current_batch_chunks))
+            vectors = model.encode(chunk_slice, batch_size=BATCH_SIZE, convert_to_numpy=True, show_progress_bar=False)
+            faiss.normalize_L2(vectors)
+            index.add(vectors)
 
-                # Mentjük a fájlok útvonalát amik bekerültek
-                for p in set(current_batch_paths):
-                    fully_processed_paths.add(p)
+            cursor.executemany("INSERT INTO rag_docs (path, content) VALUES (?, ?)", zip(path_slice, chunk_slice))
 
-                current_batch_chunks.clear()
-                current_batch_paths.clear()
+            for p in set(path_slice):
+                fully_processed_paths.add(p)
 
-        pbar.update(1)
+            del current_batch_chunks[:BATCH_SIZE]
+            del current_batch_paths[:BATCH_SIZE]
 
-        # Mentés és shard váltás
-        # A 32GB RAM miatt ritkíthatjuk a diszkre írást, 5000 fájlonként commitolunk!
         if len(fully_processed_paths) >= 5000 or index.ntotal >= MAX_VECTORS_PER_SHARD:
             conn.commit()
             save_state(conn, index, current_shard_id, cursor, fully_processed_paths)
@@ -253,7 +247,9 @@ def main():
 
             cursor.execute("BEGIN TRANSACTION;")
 
-    # Maradék feldolgozása, ha nem volt megszakítás
+    if processed_files_in_batch > 0:
+        pbar.update(processed_files_in_batch)
+
     if current_batch_chunks and not SHUTDOWN_REQUESTED:
         vectors = model.encode(current_batch_chunks, batch_size=BATCH_SIZE, convert_to_numpy=True, show_progress_bar=False)
         faiss.normalize_L2(vectors)
@@ -265,10 +261,14 @@ def main():
     conn.commit()
     save_state(conn, index, current_shard_id, cursor, fully_processed_paths)
 
-    if not SHUTDOWN_REQUESTED:
-        shutdown_machine()
+    if SHUTDOWN_REQUESTED:
+        sys.exit(0)
+    elif total_processed_this_run >= RESTART_LIMIT:
+        print("[*] Chunk limit elérve. Szándékos kilépés (42) a Wrapper számára az újraindításhoz.")
+        sys.exit(42)
     else:
-        # Tisztítás daemon szál mellett (a Python sys.exit is elég lenne)
+        # Ha elfogyott minden maradék fájl
+        shutdown_machine()
         sys.exit(0)
 
 if __name__ == "__main__":
