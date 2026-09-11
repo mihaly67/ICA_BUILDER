@@ -48,8 +48,8 @@ def check_vps_llama_status():
 
 def register_rag_environments():
     print("📚 RAG Adatbázis Környezeti Változók beállítása (.env fájlba)...")
-    env_content = "MAIN_RAG_PATH=/home/misi/RAG_Builder_Data/Rag_epites, chatbot_csv_data_llm_RAG/\n"
-    env_content += "DEV_RAG_PATH=/home/misi/RAG_Builder_Data/BRAIN2_DEV_RAG/\n"
+    env_content = "MAIN_RAG_PATH=/home/misi/Rag_epites, chatbot_csv_data_llm_RAG/\n"
+    env_content += "DEV_RAG_PATH=/home/misi/BRAIN2_DEV_RAG/\n"
 
     # Hogy ne ismétlődjenek a sorok, ellenőrizzük, megvannak-e már:
     existing_content = ""
