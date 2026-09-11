@@ -8,9 +8,9 @@ from sentence_transformers import SentenceTransformer
 # Feltételezzük, hogy a llama_cpp_python telepítve van, ha meglesz a model.
 # from llama_cpp import Llama
 
-WORK_DIR = "/home/Jules/RAG_epito_ismeretek"
+WORK_DIR = "/home/Jules/MX_LINUX_RAG"
 DB_FILE = os.path.join(WORK_DIR, "rag_knowledge.db")
-INDEX_FILE = os.path.join(WORK_DIR, "rag_vectors.index")
+INDEX_FILE = os.path.join(WORK_DIR, "mxlinux_dev_index.faiss")
 
 def main():
     print("=== 🧠 KÖVETKEZŐ GENERÁCIÓS RAG: DUAL-GPU PIPELINE ELŐKÉSZÍTÉS ===")

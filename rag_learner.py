@@ -6,9 +6,9 @@ import torch
 import sys
 from sentence_transformers import SentenceTransformer
 
-WORK_DIR = "/home/Jules/RAG_epito_ismeretek"
+WORK_DIR = "/home/Jules/MX_LINUX_RAG"
 DB_FILE = os.path.join(WORK_DIR, "rag_knowledge.db")
-INDEX_FILE = os.path.join(WORK_DIR, "rag_vectors.index")
+INDEX_FILE = os.path.join(WORK_DIR, "mxlinux_dev_index.faiss")
 
 def main():
     if len(sys.argv) < 2:

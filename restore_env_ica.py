@@ -11,10 +11,7 @@ import sys
 def install_dependencies():
     print("🔧 ICA Függőségek telepítése...")
     try:
-        # Hozzáadjuk a '--break-system-packages' paramétert ha szükséges újabb pip-nél, vagy sudo-val globálisan.
-        # De biztonságosabb simán az aktuális pyenv / virtualenv pipjét használni:
         subprocess.run([sys.executable, "-m", "pip", "install", "mcp", "paramiko", "python-dotenv", "psutil", "flask", "waitress", "beautifulsoup4", "apscheduler"], check=True)
-        # A telepítőből kikerült az sshpass az új Zero Trust architektúra (public-key hitelesítés) miatt.
         print("✅ Függőségek telepítve.")
     except Exception as e:
         print(f"⚠️ Hiba a függőségek telepítésekor: {e}")
@@ -74,12 +71,11 @@ def check_physical_machine_status():
 
     if os.path.exists(checker_path):
         print("\n🔍 Fizikai gép (Jules) hálózati ellenőrzése...")
-        try:
             # Subprocess run without capture_output so the user can see the progress/prompts directly
+        try:
             subprocess.run([sys.executable, checker_path])
         except KeyboardInterrupt:
             print("\n[!] Gép ellenőrzés megszakítva.")
-            pass
 
 
 def main():
@@ -97,28 +93,6 @@ def main():
         print("\n📖 [AUTO-KONTEXTUS] A korábbi események és memóriák betöltése az új Session-höz:")
         subprocess.run([sys.executable, memory_manager_path, "--action", "read", "--limit", "3"])
 
-    # Amnézia elleni daemon (Memory Reminder) indítása
-    reminder_script = os.path.join(script_dir, "ENVIRONMENT_SETUP", "memory_reminder.py")
-    if os.path.exists(reminder_script):
-        try:
-            output = subprocess.check_output(["pgrep", "-f", "memory_reminder.py"]).decode("utf-8")
-        except subprocess.CalledProcessError:
-            subprocess.Popen([sys.executable, reminder_script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print("✅ Amnézia elleni szolgáltatás elindítva.")
-
-    # Start Memory Sync Background Process
-    sync_script_path = os.path.join(script_dir, "tools", "sync_memory_to_vps.py")
-    if os.path.exists(sync_script_path):
-        print("🔄 Memória Szinkronizáló Háttérfolyamat indítása...")
-        # Check if already running
-        try:
-            output = subprocess.check_output(["pgrep", "-f", "sync_memory_to_vps.py"]).decode("utf-8")
-            if output.strip():
-                print("✅ A memória szinkronizáló már fut a háttérben.")
-        except subprocess.CalledProcessError:
-            # If not running, start it
-            subprocess.Popen([sys.executable, sync_script_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print("✅ Memória Szinkronizáló elindítva.")
 
     check_vps_llama_status()
     register_rag_environments()
