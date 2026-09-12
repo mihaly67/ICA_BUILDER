@@ -29,6 +29,7 @@ WORK_DIR = "/home/Jules/MX_LINUX_RAG"
 JSONL_FILE = os.path.join(WORK_DIR, "mxlinux.jsonl")
 DB_FILE = os.path.join(WORK_DIR, "mxlinux.db")
 INDEX_FILE = os.path.join(WORK_DIR, "mxlinux.index")
+STATE_FILE = os.path.join(WORK_DIR, "mxlinux_state.json")
 
 # Batch Size optimalizáció (a VRAM fügvényében)
 BATCH_SIZE = 256
@@ -38,12 +39,13 @@ MODEL_NAME = 'all-MiniLM-L6-v2'
 PREFETCH_QUEUE_SIZE = 50
 WRITE_QUEUE_SIZE = 100
 
-# Globális leállítási jelző (Pause/Resume funkció)
-shutdown_event = mp.Event()
+# Globális leállítási jelzők
+shutdown_flag = False
 
 def signal_handler(sig, frame):
     print("\n🛑 [PAUSE JELZÉS] Leállítási folyamat megkezdődött. Az adatok lemezre mentése...")
-    shutdown_event.set()
+    global shutdown_flag
+    shutdown_flag = True
 
 def init_database(db_path):
     conn = sqlite3.connect(db_path, isolation_level=None)
@@ -62,16 +64,20 @@ def init_database(db_path):
     conn.commit()
     return conn, cursor
 
-def get_processed_count(db_path):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT COUNT(*) FROM rag_data")
-        count = cursor.fetchone()[0]
-    except sqlite3.OperationalError:
-        count = 0
-    conn.close()
-    return count
+def get_processed_lines_state():
+    """Pontos JSONL line tracker fájl betöltése, hogy ne függjön az SQLite ID-ktől (üres sorok miatt)"""
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, 'r') as f:
+                data = json.load(f)
+                return data.get("lines_read", 0)
+        except:
+            pass
+    return 0
+
+def save_processed_lines_state(lines_read):
+    with open(STATE_FILE, 'w') as f:
+        json.dump({"lines_read": lines_read}, f)
 
 def get_total_lines(filepath):
     meta_file = filepath + ".meta"
@@ -88,12 +94,13 @@ def get_total_lines(filepath):
 # ==============================================================================
 # OPTIMALIZÁLT OLVASÓ (A RAG AI Javaslata alapján - Block Based Iterator)
 # ==============================================================================
-def reader_process(data_path, input_queue, skip_lines):
+def reader_process(data_path, input_queue, skip_lines, shutdown_event):
     import itertools
     print(f"📦 Olvasó Processz indítása... Gyors átugrás: {skip_lines} sor.")
 
     batch_texts = []
     batch_metadata = []
+    lines_read_this_session = 0
 
     try:
         with open(data_path, 'r', encoding='utf-8') as f:
@@ -104,6 +111,7 @@ def reader_process(data_path, input_queue, skip_lines):
                 if shutdown_event.is_set():
                     break
 
+                lines_read_this_session += 1
                 line = line.strip()
                 if not line:
                     continue
@@ -120,13 +128,13 @@ def reader_process(data_path, input_queue, skip_lines):
                     continue
 
                 if len(batch_texts) >= BATCH_SIZE:
-                    input_queue.put((batch_texts, batch_metadata))
+                    input_queue.put((batch_texts, batch_metadata, skip_lines + lines_read_this_session))
                     batch_texts = []
                     batch_metadata = []
 
             # Maradék
             if batch_texts and not shutdown_event.is_set():
-                input_queue.put((batch_texts, batch_metadata))
+                input_queue.put((batch_texts, batch_metadata, skip_lines + lines_read_this_session))
 
     except Exception as e:
         print(f"❌ Olvasó Hiba: {e}")
@@ -137,7 +145,7 @@ def reader_process(data_path, input_queue, skip_lines):
 # ==============================================================================
 # WRITER THREAD (Checkpointing és SQLite WAL mentés)
 # ==============================================================================
-def writer_thread_worker(output_queue, db_file, index_file, dim):
+def writer_thread_worker(output_queue, db_file, index_file, dim, shutdown_event):
     print("💾 Writer I/O Szál indítása...")
     conn, cursor = init_database(db_file)
 
@@ -148,29 +156,36 @@ def writer_thread_worker(output_queue, db_file, index_file, dim):
         index = faiss.IndexIDMap(faiss.IndexFlatL2(dim))
 
     total_inserted = 0
+    last_processed_line = 0
 
     while True:
         item = output_queue.get()
         if item is None: # Szabályos leállás vagy Pause
             break
 
-        batch_metadata, embeddings = item
+        batch_metadata, embeddings, processed_line = item
 
         try:
             cursor.execute("BEGIN TRANSACTION")
-            cursor.executemany('INSERT INTO rag_data (source_repo, filepath, content) VALUES (?, ?, ?)', batch_metadata)
+            start_id = None
+            for row in batch_metadata:
+                cursor.execute('INSERT INTO rag_data (source_repo, filepath, content) VALUES (?, ?, ?)', row)
+                if start_id is None:
+                    start_id = cursor.lastrowid
             conn.commit()
 
             last_id = cursor.lastrowid
-            start_id = last_id - len(batch_metadata) + 1
-            db_ids = np.arange(start_id, last_id + 1).astype('int64')
+            if start_id is not None and last_id is not None:
+                db_ids = np.arange(start_id, last_id + 1).astype('int64')
+                index.add_with_ids(np.array(embeddings).astype('float32'), db_ids)
 
-            index.add_with_ids(np.array(embeddings).astype('float32'), db_ids)
             total_inserted += len(batch_metadata)
+            last_processed_line = processed_line
 
             # Gyakori mentés, ha Pause jelet kaptunk (biztonság)
             if total_inserted % (BATCH_SIZE * 10) == 0 or shutdown_event.is_set():
                 faiss.write_index(index, index_file)
+                save_processed_lines_state(last_processed_line)
 
         except Exception as e:
             print(f"\n❌ Hiba az adatbázis/faiss írásánál: {e}")
@@ -178,6 +193,7 @@ def writer_thread_worker(output_queue, db_file, index_file, dim):
 
     print("\n💾 [PAUSE/RESUME] Végső mentés a lemezre (Checkpoint)...")
     faiss.write_index(index, index_file)
+    save_processed_lines_state(last_processed_line)
     conn.close()
     print("💾 Writer I/O leállt biztonságosan.")
 
@@ -185,6 +201,7 @@ def writer_thread_worker(output_queue, db_file, index_file, dim):
 # FŐSZÁL: KÖVETKEZŐ GENERÁCIÓS GPU CONSUMER (Dual-GPU Felkészített)
 # ==============================================================================
 def main():
+    global shutdown_flag
     print("=== 🚀 RAG HYPER-VECTORIZER (AI OPTIMALIZÁLT ARCHITEKTÚRA) ===")
 
     # Felkészülés a Dual GPU-ra (Ha bekerül a P4000)
@@ -201,11 +218,13 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    processed_count = get_processed_count(DB_FILE)
-    print(f"🔍 Aktuális Checkpoint: {processed_count} rekord van már az adatbázisban.")
+    shutdown_event = mp.Event() # Megfelelően átadott mp.Event()
+
+    processed_lines = get_processed_lines_state()
+    print(f"🔍 Aktuális Checkpoint: {processed_lines} sor van már beolvasva a fájlból.")
     total_lines = get_total_lines(JSONL_FILE)
 
-    if processed_count >= total_lines:
+    if processed_lines >= total_lines:
         print("✅ Minden adat fel van dolgozva.")
         return
 
@@ -214,32 +233,32 @@ def main():
     import queue
     output_queue = queue.Queue(maxsize=WRITE_QUEUE_SIZE)
 
-    reader = mp.Process(target=reader_process, args=(JSONL_FILE, input_queue, processed_count))
+    reader = mp.Process(target=reader_process, args=(JSONL_FILE, input_queue, processed_lines, shutdown_event))
     reader.start()
 
     model = SentenceTransformer(MODEL_NAME, device=device)
     dim = model.get_sentence_embedding_dimension() if hasattr(model, 'get_sentence_embedding_dimension') else model.get_embedding_dimension()
 
-    writer_thread = threading.Thread(target=writer_thread_worker, args=(output_queue, DB_FILE, INDEX_FILE, dim))
+    writer_thread = threading.Thread(target=writer_thread_worker, args=(output_queue, DB_FILE, INDEX_FILE, dim, shutdown_event))
     writer_thread.daemon = True
     writer_thread.start()
 
     start_time = time.time()
     print("🚀 GPU Encode Ciklus Indulése... (Nyomj Ctrl+C a biztonságos Pause-hoz!)")
 
-    pbar = tqdm(total=total_lines - processed_count, desc="Vektorizálás")
+    pbar = tqdm(total=total_lines - processed_lines, desc="Vektorizálás")
 
     try:
-        while not shutdown_event.is_set():
+        while not shutdown_flag:
             item = input_queue.get()
             if item is None:
                 break # EOF
 
-            batch_texts, batch_metadata = item
+            batch_texts, batch_metadata, processed_line = item
 
             # TISZTA GPU MÁTRIXSZORZÁS
             embeddings = model.encode(batch_texts, batch_size=BATCH_SIZE, show_progress_bar=False, normalize_embeddings=True)
-            output_queue.put((batch_metadata, embeddings))
+            output_queue.put((batch_metadata, embeddings, processed_line))
 
             pbar.update(len(batch_texts))
 
@@ -250,10 +269,19 @@ def main():
     except KeyboardInterrupt:
         print("\n⚠️ Felhasználói megszakítás.")
     finally:
+        shutdown_flag = True
         shutdown_event.set()
         pbar.close()
 
     print("\n🛑 Rendszer leállítása, folyamatok bevárása...")
+
+    # Reader elakadásának feloldása
+    try:
+        while not input_queue.empty():
+            input_queue.get_nowait()
+    except:
+        pass
+
     output_queue.put(None)
     writer_thread.join()
     reader.join()

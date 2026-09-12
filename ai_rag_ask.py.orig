@@ -102,8 +102,7 @@ def main():
             temperature=0.7,
             top_p=0.9,
             do_sample=True,
-            repetition_penalty=1.2,
-            truncation=True
+            repetition_penalty=1.2
         )
         print("✅ Mini LLM sikeresen betöltve a memóriába.")
     except Exception as e:
@@ -130,11 +129,8 @@ Please analyze the above context, find patterns, and provide a detailed plan/pro
     generated_text = result[0]['generated_text']
 
     # A prompt eltávolítása a válaszból
-    assistant_marker = "<|assistant|>"
-    if assistant_marker in generated_text:
-        final_response = generated_text.split(assistant_marker)[-1].strip()
-    else:
-        final_response = generated_text.strip()
+    response_start = generated_text.find("<|assistant|>") + len("<|assistant|>\n")
+    final_response = generated_text[response_start:].strip()
 
     print(final_response)
     print("\n" + "="*80)

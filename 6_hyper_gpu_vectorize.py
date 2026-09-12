@@ -182,8 +182,8 @@ def writer_thread_worker(output_queue, db_file, index_file, dim, shutdown_event)
             total_inserted += len(batch_metadata)
             last_processed_line = processed_line
 
-            # Gyakori mentés, ha Pause jelet kaptunk (biztonság)
-            if total_inserted % (BATCH_SIZE * 10) == 0 or shutdown_event.is_set():
+            # Biztonsági mentés (csak minden 100,000. sornál a hatalmas I/O elkerüléséért)
+            if total_inserted > 0 and total_inserted % (BATCH_SIZE * 400) == 0:
                 faiss.write_index(index, index_file)
                 save_processed_lines_state(last_processed_line)
 
