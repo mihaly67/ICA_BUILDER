@@ -10,6 +10,7 @@ import multiprocessing as mp
 import threading
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
+import argparse
 
 # ==============================================================================
 # BIZTONSÁGI / CUDA VÉDELMEK
@@ -24,11 +25,6 @@ except RuntimeError:
 # ==============================================================================
 # KONFIGURÁCIÓ A QUADRO P2000-HEZ ÉS XEON E5-1620 (8 MAG, 32GB RAM)
 # ==============================================================================
-WORK_DIR = "/home/Jules/RAG_epito_ismeretek"
-JSONL_FILE = os.path.join(WORK_DIR, "dataset.jsonl")
-DB_FILE = os.path.join(WORK_DIR, "rag_knowledge.db")
-INDEX_FILE = os.path.join(WORK_DIR, "rag_vectors.index")
-
 # Optimális 5GB VRAM-ra (65% usage)
 BATCH_SIZE = 256
 MODEL_NAME = 'all-MiniLM-L6-v2'
@@ -146,8 +142,12 @@ def writer_thread_worker(output_queue, db_file, index_file, dim):
     conn, cursor = init_database(db_file)
 
     if os.path.exists(index_file):
-        print(f"🗄️ FAISS Index betöltése a folytatáshoz: {index_file}")
-        index = faiss.read_index(index_file)
+        try:
+            print(f"🗄️ FAISS Index betöltése a folytatáshoz: {index_file}")
+            index = faiss.read_index(index_file)
+        except Exception as e:
+            print(f"⚠️ Hiba az index fájl betöltésekor: {e}. Új index inicializálása.")
+            index = faiss.IndexIDMap(faiss.IndexFlatL2(dim))
     else:
         index = faiss.IndexIDMap(faiss.IndexFlatL2(dim))
 
@@ -163,14 +163,18 @@ def writer_thread_worker(output_queue, db_file, index_file, dim):
 
         try:
             cursor.execute("BEGIN TRANSACTION")
-            cursor.executemany('INSERT INTO rag_data (source_repo, filepath, content) VALUES (?, ?, ?)', batch_metadata)
+            start_id = None
+            for row in batch_metadata:
+                cursor.execute('INSERT INTO rag_data (source_repo, filepath, content) VALUES (?, ?, ?)', row)
+                if start_id is None:
+                    start_id = cursor.lastrowid
             conn.commit()
 
             last_id = cursor.lastrowid
-            start_id = last_id - len(batch_metadata) + 1
-            db_ids = np.arange(start_id, last_id + 1).astype('int64')
+            if start_id is not None and last_id is not None:
+                db_ids = np.arange(start_id, last_id + 1).astype('int64')
+                index.add_with_ids(np.array(embeddings).astype('float32'), db_ids)
 
-            index.add_with_ids(np.array(embeddings).astype('float32'), db_ids)
             total_inserted += len(batch_metadata)
 
             # 5 GPU kötegenként írjuk a Faisst (256 * 5)
@@ -193,6 +197,16 @@ def writer_thread_worker(output_queue, db_file, index_file, dim):
 # Kizárólag a modellt futtatja. Nincs I/O, nincs JSON parse. Max GPU throughput.
 # ==============================================================================
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--jsonl", type=str, default="/home/Jules/MX_LINUX_RAG/mxlinux.jsonl")
+    parser.add_argument("--db", type=str, default="/home/Jules/MX_LINUX_RAG/mxlinux.db")
+    parser.add_argument("--index", type=str, default="/home/Jules/MX_LINUX_RAG/mxlinux.index")
+    args = parser.parse_args()
+
+    JSONL_FILE = args.jsonl
+    DB_FILE = args.db
+    INDEX_FILE = args.index
+
     print("=== 🚀 RAG ULTRA-GPU VECTORIZER (6 PRODUCER - 1 CONSUMER) ===")
     if not os.path.exists(JSONL_FILE):
         print(f"❌ HIBA: Nem található a {JSONL_FILE} fájl!")
