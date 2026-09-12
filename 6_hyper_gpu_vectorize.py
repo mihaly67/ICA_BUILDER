@@ -11,6 +11,9 @@ import threading
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 import signal
+import psutil
+import subprocess
+
 
 # ==============================================================================
 # BIZTONSÁGI / CUDA VÉDELMEK
@@ -46,6 +49,22 @@ def signal_handler(sig, frame):
     print("\n🛑 [PAUSE JELZÉS] Leállítási folyamat megkezdődött. Az adatok lemezre mentése...")
     global shutdown_flag
     shutdown_flag = True
+
+
+def kill_zombie_processes():
+    print("🧹 [RAM VÉDELEM] Előző futásból beragadt zombi processzek takarítása...")
+    try:
+        # A multiprocessing.spawn zombik kilövése
+        subprocess.run(["pkill", "-9", "-f", "multiprocessing.spawn"], stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+def clear_linux_page_cache():
+    # Megpróbálja kiüríteni a linux cache-t (jelszómentes sudo szükséges hozzá a gépen)
+    try:
+        subprocess.run(["sudo", "-n", "sysctl", "-w", "vm.drop_caches=1"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except:
+        pass
 
 def init_database(db_path):
     conn = sqlite3.connect(db_path, isolation_level=None)
@@ -110,6 +129,15 @@ def reader_process(data_path, input_queue, skip_lines, shutdown_event):
             for line in iterator:
                 if shutdown_event.is_set():
                     break
+
+                # [RAM VÉDELEM] Ha a szabad RAM 15% alá esik, az olvasó várakozik
+                if lines_read_this_session % 50000 == 0:
+                    mem = psutil.virtual_memory()
+                    if mem.available / mem.total < 0.15:
+                        print(f"\n⚠️ [RAM FIGYELMEZTETÉS] Szabad RAM kritikus szinten ({(mem.available/mem.total)*100:.1f}%). Olvasó szüneteltetése 5 másodpercre...")
+                        time.sleep(5)
+                        gc.collect()
+                        clear_linux_page_cache()
 
                 lines_read_this_session += 1
                 line = line.strip()
@@ -202,6 +230,7 @@ def writer_thread_worker(output_queue, db_file, index_file, dim, shutdown_event)
 # ==============================================================================
 def main():
     global shutdown_flag
+    kill_zombie_processes()
     print("=== 🚀 RAG HYPER-VECTORIZER (AI OPTIMALIZÁLT ARCHITEKTÚRA) ===")
 
     # Felkészülés a Dual GPU-ra (Ha bekerül a P4000)
