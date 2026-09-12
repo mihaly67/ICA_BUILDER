@@ -172,11 +172,7 @@ def writer_thread_worker(output_queue, db_file, index_file, state_file, dim, shu
     conn, cursor = init_database(db_file)
 
     if os.path.exists(index_file):
-        try:
-            index = faiss.read_index(index_file)
-        except Exception as e:
-            print(f"⚠️ Hiba az index fájl betöltésekor: {e}. Új index inicializálása.")
-            index = faiss.IndexIDMap(faiss.IndexFlatL2(dim))
+        index = faiss.read_index(index_file)
     else:
         index = faiss.IndexIDMap(faiss.IndexFlatL2(dim))
 
