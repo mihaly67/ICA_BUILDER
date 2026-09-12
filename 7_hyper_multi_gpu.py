@@ -31,7 +31,7 @@ except RuntimeError:
 BATCH_SIZE = 256
 MODEL_NAME = 'all-MiniLM-L6-v2'
 
-PREFETCH_QUEUE_SIZE = 200
+PREFETCH_QUEUE_SIZE = 400
 WRITE_QUEUE_SIZE = 200
 NUM_WORKERS = 6
 
@@ -45,7 +45,6 @@ def signal_handler(sig, frame):
 def kill_zombie_processes():
     import subprocess
     try:
-        # A felhasználó kifejezett kérésére a rendszerbe ragadt multiprocessing zombie-kat lőjük ki, amik 100% ramot esznek
         subprocess.run(["pkill", "-9", "-f", "multiprocessing.spawn"], stderr=subprocess.DEVNULL)
     except Exception:
         pass
@@ -98,11 +97,9 @@ def reader_process(worker_id, data_path, start_byte, end_byte, input_queue, star
     current_pos = start_byte + start_offset
 
     try:
-        # rb (binary) mód kötelező a seek() hiba és a UnicodeEncodeError megelőzése végett!
         with open(data_path, 'rb') as f:
             f.seek(current_pos)
 
-            # Ha nem a fájl legelején vagyunk, el kell mennünk az első újsorig, hogy ne vágjuk ketté a UTF-8 JSON sort
             if current_pos != 0 and start_offset == 0:
                 f.readline()
                 current_pos = f.tell()
@@ -136,13 +133,14 @@ def reader_process(worker_id, data_path, start_byte, end_byte, input_queue, star
 
                 if len(batch_texts) >= BATCH_SIZE:
                     mem = psutil.virtual_memory()
-                    if mem.available / mem.total < 0.15:
-                        time.sleep(1)
+                    if mem.available / mem.total < 0.10:
+                        time.sleep(0.5)
 
                     while not shutdown_event.is_set():
                         try:
                             processed_bytes = current_pos - start_byte
-                            input_queue.put((batch_texts, batch_metadata, worker_id, processed_bytes), timeout=1)
+                            # Erős IPC put, timeout növelve, hogy ne pörögjön túl a cpu exception handlinggel
+                            input_queue.put((batch_texts, batch_metadata, worker_id, processed_bytes), block=True, timeout=2)
                             batch_texts = []
                             batch_metadata = []
                             break
@@ -153,7 +151,7 @@ def reader_process(worker_id, data_path, start_byte, end_byte, input_queue, star
                 while not shutdown_event.is_set():
                     try:
                         processed_bytes = current_pos - start_byte
-                        input_queue.put((batch_texts, batch_metadata, worker_id, processed_bytes), timeout=1)
+                        input_queue.put((batch_texts, batch_metadata, worker_id, processed_bytes), block=True, timeout=2)
                         break
                     except queue.Full:
                         continue
@@ -287,14 +285,16 @@ def main():
     start_time = time.time()
     print("🚀 GPU Encode Ciklus Indulése... (Nyomj Ctrl+C a biztonságos Pause-hoz!)")
 
-    estimated_total_batches = (file_size // (2000)) // BATCH_SIZE
-    pbar = tqdm(total=estimated_total_batches, desc="Batchek feldolgozása")
+    # Valós sebesség mutatása (it/s)
+    estimated_total_lines = file_size // 2000
+    pbar = tqdm(total=estimated_total_lines, desc="Vektorizálás", unit="sor")
 
     finished_workers = 0
     try:
         while not shutdown_flag:
             try:
-                item = input_queue.get(timeout=1)
+                # IPC optimalizáció
+                item = input_queue.get(block=True, timeout=2)
             except queue.Empty:
                 if finished_workers == len(workers):
                     break
@@ -309,7 +309,7 @@ def main():
             embeddings = model.encode(batch_texts, batch_size=BATCH_SIZE, show_progress_bar=False, normalize_embeddings=True)
             output_queue.put((batch_metadata, embeddings, worker_id, processed_bytes))
 
-            pbar.update(1)
+            pbar.update(len(batch_texts))
 
             if 'cuda' in device:
                 torch.cuda.empty_cache()
