@@ -1,0 +1,3 @@
+#!/bin/sh
+pkill -f ssh_tailscale_monitor || true
+exit 0
