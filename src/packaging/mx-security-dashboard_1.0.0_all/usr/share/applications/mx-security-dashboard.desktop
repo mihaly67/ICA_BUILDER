@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Jules CyberSec Dashboard
+Comment=Biztonsági Központ és Tűzfal Kezelő
+Exec=/usr/bin/mx-security-dashboard
+Icon=/usr/share/icons/oxygen/base/128x128/status/security-high.png
+Terminal=false
+Type=Application
+Categories=System;MX-Setup;Settings;Security;
+Keywords=security;firewall;antivirus;jules;
+StartupNotify=true
