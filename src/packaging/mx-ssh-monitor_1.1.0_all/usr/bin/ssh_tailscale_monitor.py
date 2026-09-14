@@ -10,7 +10,7 @@ from PyQt5.QtGui import QFont, QIcon, QColor
 class SysMonitor(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Jules SSH & Tailscale Monitor - v1.0.9")
+        self.setWindowTitle("Jules SSH & Tailscale Monitor - v1.1.0")
         self.resize(750, 600)
         self.setStyleSheet("""
             QMainWindow { background-color: #0f172a; }

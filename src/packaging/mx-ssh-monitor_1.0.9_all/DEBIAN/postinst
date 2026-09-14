@@ -1,4 +1,0 @@
-#!/bin/bash
-update-desktop-database /usr/share/applications || true
-update-menus || true
-exit 0
