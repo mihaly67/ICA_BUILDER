@@ -9,7 +9,7 @@ from PyQt5.QtNetwork import QLocalSocket, QLocalServer
 class CPUGPUStressApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Jules PC Stress Test - v1.1.4")
+        self.setWindowTitle("Jules PC Stress Test - v1.1.5")
         self.setMinimumSize(800, 600)
         self.setStyleSheet("""
             QMainWindow { background-color: #0f172a; }
