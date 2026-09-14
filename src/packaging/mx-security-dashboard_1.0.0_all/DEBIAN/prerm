@@ -1,0 +1,3 @@
+#!/bin/sh
+pkill -f security_dashboard.py || true
+exit 0
