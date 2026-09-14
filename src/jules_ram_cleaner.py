@@ -3,43 +3,96 @@ import os
 import psutil
 import subprocess
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout,
-                             QWidget, QLabel, QPushButton, QProgressBar, QTextEdit)
+                             QWidget, QLabel, QPushButton, QProgressBar, QTextEdit, QInputDialog, QLineEdit)
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
-from PyQt5.QtGui import QFont, QIcon, QTextCursor
+from PyQt5.QtGui import QFont, QIcon, QTextCursor, QPainter, QColor
 from PyQt5.QtNetwork import QLocalSocket, QLocalServer
+
+
+class MultiBar(QWidget):
+    def __init__(self, label_text, color_map, parent=None):
+        super().__init__(parent)
+        self.label_text = label_text
+        self.color_map = color_map
+        self.setFixedHeight(25)
+        self.text_override = ""
+
+    def update_values(self, color_map, text_override=""):
+        self.color_map = color_map
+        self.text_override = text_override
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # Border
+        painter.setPen(QColor("#334155"))
+        painter.setBrush(QColor("#1e293b"))
+        painter.drawRoundedRect(0, 0, self.width()-1, self.height()-1, 4, 4)
+
+        width = self.width() - 2
+        height = self.height() - 2
+        current_x = 1
+
+        # Draw bars
+        painter.setPen(Qt.NoPen)
+        for color_hex, val_pct in self.color_map:
+            w = int((val_pct / 100.0) * width)
+            if w > 0:
+                painter.setBrush(QColor(color_hex))
+                # Slight rounding
+                painter.drawRoundedRect(current_x, 1, w, height, 2, 2)
+                current_x += w
+
+        # Draw text
+        painter.setPen(QColor("white"))
+        font = QFont("Segoe UI", 10, QFont.Bold)
+        painter.setFont(font)
+        text = self.text_override if self.text_override else self.label_text
+        painter.drawText(self.rect(), Qt.AlignCenter, text)
+
 
 class CleanerWorker(QThread):
     log_update = pyqtSignal(str)
     finished_update = pyqtSignal()
 
-    def __init__(self, mode):
+    def __init__(self, mode, sudo_pwd):
         super().__init__()
         self.mode = mode # "RAM" or "SWAP" or "BOTH"
+        self.sudo_pwd = sudo_pwd
+
+    def run_sudo(self, cmd_list):
+        # We write the password to standard input of sudo
+        # Using subprocess.Popen to feed the password securely
+        sudo_cmd = ["sudo", "-S"] + cmd_list
+        proc = subprocess.Popen(sudo_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        out, err = proc.communicate(input=self.sudo_pwd + "\n")
+        return proc.returncode, out, err
 
     def run(self):
         try:
             self.log_update.emit("Tisztítási folyamat indul...")
             if self.mode in ["RAM", "BOTH"]:
-                self.log_update.emit("OS Page Cache kiürítése (pkexec sysctl vm.drop_caches=3)...")
-                # pkexec brings up a GUI password prompt on MX Linux (Polkit)
-                res = subprocess.run(["pkexec", "sysctl", "-w", "vm.drop_caches=3"], capture_output=True, text=True)
-                if res.returncode == 0:
+                self.log_update.emit("OS Page Cache kiürítése (sudo sysctl)...")
+                rc, out, err = self.run_sudo(["/sbin/sysctl", "-w", "vm.drop_caches=3"])
+                if rc == 0:
                     self.log_update.emit("-> Page Cache sikeresen törölve.")
                 else:
-                    self.log_update.emit(f"-> Hiba a Page Cache törlésekor: {res.stderr}")
+                    self.log_update.emit(f"-> Hiba a Page Cache törlésekor: {err.strip()}")
 
             if self.mode in ["SWAP", "BOTH"]:
                 self.log_update.emit("Swap memória újraindítása (ez eltarthat egy ideig)...")
-                res = subprocess.run(["pkexec", "swapoff", "-a"], capture_output=True, text=True)
-                if res.returncode == 0:
+                rc, out, err = self.run_sudo(["/sbin/swapoff", "-a"])
+                if rc == 0:
                     self.log_update.emit("-> Swapoff sikeres.")
-                    res2 = subprocess.run(["pkexec", "swapon", "-a"], capture_output=True, text=True)
-                    if res2.returncode == 0:
+                    rc2, out2, err2 = self.run_sudo(["/sbin/swapon", "-a"])
+                    if rc2 == 0:
                         self.log_update.emit("-> Swapon sikeres, Swap kiürítve.")
                     else:
-                        self.log_update.emit(f"-> Hiba a Swapon során: {res2.stderr}")
+                        self.log_update.emit(f"-> Hiba a Swapon során: {err2.strip()}")
                 else:
-                    self.log_update.emit(f"-> Hiba a Swapoff során: {res.stderr}")
+                    self.log_update.emit(f"-> Hiba a Swapoff során: {err.strip()}")
 
         except Exception as e:
             self.log_update.emit(f"Kritikus hiba: {str(e)}")
@@ -50,7 +103,7 @@ class CleanerWorker(QThread):
 class JulesRAMCleaner(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Jules RAM & Swap Cleaner - v1.0.0")
+        self.setWindowTitle("Jules RAM & Swap Cleaner - v1.0.3")
         self.setMinimumSize(600, 400)
         self.setStyleSheet("""
             QMainWindow { background-color: #0f172a; }
@@ -82,11 +135,11 @@ class JulesRAMCleaner(QMainWindow):
         """)
 
         # Icon
-        icon_path = "/usr/share/icons/oxygen/base/128x128/places/user-trash.png"
+        icon_path = "/usr/share/icons/Papirus/64x64/devices/media-memory.svg"
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         else:
-            self.setWindowIcon(QIcon.fromTheme("user-trash"))
+            self.setWindowIcon(QIcon.fromTheme("media-memory"))
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -101,15 +154,13 @@ class JulesRAMCleaner(QMainWindow):
         # Status displays
         stats_layout = QHBoxLayout()
 
-        self.ram_label = QLabel("RAM Használat: N/A")
+        self.ram_label = QLabel("RAM Használat (Zöld: Használt | Sárga: Cache)")
         self.ram_label.setFont(QFont("Segoe UI", 12))
-        self.ram_bar = QProgressBar()
-        self.ram_bar.setRange(0, 100)
+        self.ram_bar = MultiBar("RAM", [])
 
-        self.swap_label = QLabel("Swap Használat: N/A")
+        self.swap_label = QLabel("Swap Használat")
         self.swap_label.setFont(QFont("Segoe UI", 12))
-        self.swap_bar = QProgressBar()
-        self.swap_bar.setRange(0, 100)
+        self.swap_bar = MultiBar("Swap", [])
 
         ram_vbox = QVBoxLayout()
         ram_vbox.addWidget(self.ram_label)
@@ -157,13 +208,20 @@ class JulesRAMCleaner(QMainWindow):
 
         mem_used_gb = mem.used / (1024**3)
         mem_total_gb = mem.total / (1024**3)
-        self.ram_label.setText(f"RAM Használat: {mem_used_gb:.1f} GB / {mem_total_gb:.1f} GB")
-        self.ram_bar.setValue(int(mem.percent))
+        mem_cach_gb = getattr(mem, 'cached', 0) / (1024**3)
+
+        used_pct = (mem.used / mem.total) * 100
+        cach_pct = (getattr(mem, 'cached', 0) / mem.total) * 100
+
+        self.ram_label.setText(f"RAM Használat: {mem_used_gb:.1f} GB / {mem_total_gb:.1f} GB (Cache: {mem_cach_gb:.1f} GB)")
+        self.ram_bar.update_values([("#22c55e", used_pct), ("#eab308", cach_pct)], f"{int(used_pct)}% Használt | {int(cach_pct)}% Cache")
 
         swap_used_gb = swap.used / (1024**3)
         swap_total_gb = swap.total / (1024**3)
+        swap_pct = (swap.used / swap.total) * 100 if swap.total > 0 else 0
+
         self.swap_label.setText(f"Swap Használat: {swap_used_gb:.1f} GB / {swap_total_gb:.1f} GB")
-        self.swap_bar.setValue(int(swap.percent))
+        self.swap_bar.update_values([("#dc2626", swap_pct)], f"{int(swap_pct)}%")
 
     def set_buttons_enabled(self, state):
         self.btn_ram.setEnabled(state)
@@ -171,11 +229,15 @@ class JulesRAMCleaner(QMainWindow):
         self.btn_both.setEnabled(state)
 
     def start_clean(self, mode):
+        pwd, ok = QInputDialog.getText(self, 'Sudo Hitelesítés', 'Kérlek add meg a jelszavad a tisztításhoz:', QLineEdit.Password)
+        if not ok or not pwd:
+            self.console.append("\n[!] Hitelesítés megszakítva.")
+            return
+
         self.set_buttons_enabled(False)
         self.console.append(f"\n--- {mode} TISZTÍTÁS INDÍTÁSA ---")
-        self.console.append("Figyelem: A PolicyKit (pkexec) jelszót kérhet a háttérben futó root művelethez!")
 
-        self.worker = CleanerWorker(mode)
+        self.worker = CleanerWorker(mode, pwd)
         self.worker.log_update.connect(self.append_log)
         self.worker.finished_update.connect(self.clean_finished)
         self.worker.start()
