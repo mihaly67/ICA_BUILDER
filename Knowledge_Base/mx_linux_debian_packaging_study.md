@@ -1,11 +1,11 @@
 # MX Linux Debian Packaging Tanulmány (GUI Alkalmazásokhoz)
 
-Ez a dokumentum rögzíti a sikeres \`.deb\` csomagolási struktúrát, miután a korábbi csomagok eltávolítása \`dpkg --configure -a\` fagyásokhoz vezetett a \`set -e\` és a Synaptic csomagkezelő összeférhetetlensége miatt. Továbbá megoldja a Synapticban megjelenő dupla kattintásos eltávolítási hibát (üres méret miatt).
+Ez a dokumentum rögzíti a sikeres \`.deb\` csomagolási struktúrát, miután a korábbi csomagok eltávolítása \`dpkg --configure -a\` fagyásokhoz vezetett a \`set -e\` és a Synaptic csomagkezelő összeférhetetlensége miatt.
 
 ## 1. A Probléma Gyökere (Dpkg megszakadt hiba)
 MX Linux alatt a grafikus telepítők (mx-packageinstaller, Synaptic) egy \`pseudo-TTY\` környezetből hívják meg az \`apt-get purge\` vagy \`dpkg -i\` parancsokat.
 * Ha a Debian csomagoló maintainer fájlok (\`postinst\`, \`prerm\`, \`postrm\`) tartalmaznak bármilyen manuális asztal frissítést (\`update-desktop-database\` vagy \`update-menus\`), a csomagkezelő GUI lefagyhat, lockolva a \`/var/lib/dpkg/lock-frontend\`-et.
-* Ha nincs megadva \`Installed-Size\` a \`control\` fájlban, a Synaptic furcsán viselkedik (dupla kattintás nem működik az eltávolításhoz).
+* Még ha meg is van adva az \`Installed-Size\` a \`control\` fájlban, a Synaptic a lokális, egyéni telepítésű csomagok esetén furcsán viselkedhet (a dupla kattintásos eltávolítás kijelölés nem mindig működik, csak a jobb klikk -> lenyíló menüs eltávolítás). Ez a lokális repo nélküli csomagok limitációja.
 
 ## 2. A Golyóálló Megoldás
 Minden maintainer scriptnek követnie kell az alábbi szabályokat:
