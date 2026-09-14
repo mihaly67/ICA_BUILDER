@@ -1,3 +1,0 @@
-#!/bin/bash
-pkill -f mx-ssh-monitor || true
-exit 0
