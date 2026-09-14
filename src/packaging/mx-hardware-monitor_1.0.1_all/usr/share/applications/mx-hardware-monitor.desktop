@@ -2,7 +2,7 @@
 Name=Jules Hardver Monitor
 Comment=Hardver Erőforrás és GPU Monitor
 Exec=/usr/bin/mx-hardware-monitor
-Icon=/usr/share/icons/oxygen/base/128x128/apps/utilities-system-monitor.png
+Icon=/usr/share/icons/oxygen/base/128x128/apps/hwinfo.png
 Terminal=false
 Type=Application
 Categories=System;MX-Setup;Settings;HardwareSettings;

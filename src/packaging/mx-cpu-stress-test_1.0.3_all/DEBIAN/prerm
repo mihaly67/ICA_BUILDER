@@ -1,3 +1,0 @@
-#!/bin/sh
-pkill -f jules_cpu_stress_test.py || true
-exit 0
