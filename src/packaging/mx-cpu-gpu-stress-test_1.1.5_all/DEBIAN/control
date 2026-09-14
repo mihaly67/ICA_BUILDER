@@ -1,5 +1,5 @@
 Package: mx-cpu-gpu-stress-test
-Version: 1.1.4
+Version: 1.1.5
 Architecture: all
 Installed-Size: 5900
 Maintainer: Jules <jules@localhost>
