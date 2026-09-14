@@ -14,7 +14,13 @@ Minden maintainer scriptnek követnie kell az alábbi szabályokat:
 3.  **SOHA NE használj \`pkill -f <app_name>\`** parancsot, ha a \`<app_name>\` megegyezik a csomag nevével! Például \`pkill -f mx-ssh-monitor\` kilövi magát a \`dpkg\` folyamatot is eltávolításkor, ami szintén megszakadást okoz! Célozd közvetlenül a \`.py\` fájlt.
 4.  A \`DEBIAN/control\` fájlba kötelező betenni az \`Installed-Size: <méret_KB>\` attribútumot!
 
-## 3. A Tökéletes Maintainer Scriptek (Sablon)
+## 3. MX Linux Ikonkezelés és Tálca (System Tray) szabályok
+Amikor egy PyQt5 GUI alkalmazásnak egységes (KDE/Oxygen stílusú) ikont szeretnénk beállítani MX Linux alatt:
+1. Az ikont szigorúan a rendszer gyári útvonaláról (pl. \`/usr/share/icons/oxygen/base/128x128/apps/utilities-system-monitor.png\`) kell beolvasni, fallback-ként használva a \`QIcon.fromTheme("utilities-system-monitor")\` metódust.
+2. Ezt az útvonalat **egységesen** kell használni a \`.desktop\` fájl \`Icon=\` mezőjében, a PyQt5 \`setWindowIcon()\`-jában, és (ha van) a \`QSystemTrayIcon\`-ban is.
+3. Ha egy alkalmazás **NEM automatikusan induló** (mint pl. a CPU Stress Test), de futtatás közben szeretnénk ha minimalizálva ne foglaljon helyet a feladatsávon: Akkor implementáljuk a \`QSystemTrayIcon\`-t. Viszont **semmiképp ne** másoljuk be a \`.desktop\` fájlt a \`~/.config/autostart/\` vagy \`/etc/xdg/autostart/\` mappákba! A sima \`/usr/share/applications/\` mappában lévő \`.desktop\` fájlok tisztán csak az "Indítópult" (Start menü) számára lesznek láthatóak.
+
+## 4. A Tökéletes Maintainer Scriptek (Sablon)
 
 **\`DEBIAN/control\` (Részlet)**
 \`\`\`text
@@ -39,7 +45,7 @@ exit 0
 exit 0
 \`\`\`
 
-## 4. Beragadt csomag kézi eltávolítása (GUI Lock eltávolítása)
+## 5. Beragadt csomag kézi eltávolítása (GUI Lock eltávolítása)
 Ha megtörtént a baj és a csomagkezelő "Waiting for cache lock" hibát dob folyamatosan (held by process X):
 \`\`\`bash
 # 1. Lődd ki a beragadt folyamatokat

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Jules CPU Stressz Teszt
+Comment=Többmagos Processzor Stresszelő
+Exec=/usr/bin/mx-cpu-stress-test
+Icon=utilities-system-monitor
+Terminal=false
+Type=Application
+Categories=System;MX-Setup;Settings;HardwareSettings;
+Keywords=cpu;stress;test;jules;
+StartupNotify=true
