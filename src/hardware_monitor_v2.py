@@ -1,3 +1,4 @@
+import threading
 import sys
 import psutil
 import subprocess
@@ -5,7 +6,7 @@ import os
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QTableView, QHeaderView,
                              QAbstractItemView, QSystemTrayIcon, QMenu, QAction)
-from PyQt5.QtCore import QTimer, QThread, pyqtSignal, Qt, QAbstractTableModel, QSortFilterProxyModel, QModelIndex
+from PyQt5.QtCore import QTimer, Qt, QAbstractTableModel, QSortFilterProxyModel, QModelIndex, pyqtSignal, QObject
 from PyQt5.QtGui import QColor, QFont, QPainter, QIcon
 from PyQt5.QtNetwork import QLocalSocket, QLocalServer
 
@@ -41,7 +42,6 @@ class ResourceBar(QWidget):
         text = f"{self.label_text} [{self.val1+self.val2:.1f}%]"
         painter.drawText(self.rect(), Qt.AlignVCenter | Qt.AlignLeft, "  " + text)
 
-
 class CPUCoreWidget(QWidget):
     def __init__(self, core_idx, parent=None):
         super().__init__(parent)
@@ -62,8 +62,6 @@ class CPUCoreWidget(QWidget):
 
     def set_color(self, color):
         self.number_label.setStyleSheet(f"color: {color}; font-weight: bold; font-size: 13px;")
-
-
 
 class MultiBar(QWidget):
     def __init__(self, label_text, color_map, parent=None):
@@ -95,7 +93,6 @@ class MultiBar(QWidget):
         painter.setFont(font)
         text = self.text_override if self.text_override else self.label_text
         painter.drawText(self.rect(), Qt.AlignVCenter | Qt.AlignLeft, "  " + text)
-
 
 # --- Custom Table Model for Smooth Scrolling and Proper Sorting ---
 class ProcessTableModel(QAbstractTableModel):
@@ -146,9 +143,7 @@ class ProcessTableModel(QAbstractTableModel):
         self._data = new_data
         self.endResetModel()
 
-
-
-class TurbostatWorker(QThread):
+class TurbostatWorker(QObject):
     data_ready = pyqtSignal(dict, dict, dict, str, str) # freqs, core_temps, cstates, pkg_watt, pkg_temp
 
     def run(self):
@@ -160,7 +155,8 @@ class TurbostatWorker(QThread):
             pkg_temp = "N/A"
             try:
                 # Turbostat can take a few seconds
-                out = subprocess.check_output("echo '1104' | sudo -S /usr/sbin/turbostat -q --num_iterations 1 2>&1", shell=True, text=True, timeout=10)
+                import subprocess
+                out = subprocess.check_output("sudo -n /usr/sbin/turbostat -q --num_iterations 1 2>&1", shell=True, text=True, timeout=10)
                 lines = out.strip().split('\n')
                 headers = []
                 header_idx = -1
@@ -195,7 +191,7 @@ class TurbostatWorker(QThread):
                                         core_temps[phys_core] = float(row['CoreTmp'])
 
                                 states = {}
-                                for st in ['C1%', 'C1E%', 'C3%', 'C6%', 'POLL%']:
+                                for st in ['Busy%', 'C1%', 'C1E%', 'C3%', 'C6%', 'POLL%']:
                                     if st in row:
                                         try: states[st.replace('%', '')] = float(row[st])
                                         except: pass
@@ -341,6 +337,14 @@ class HardwareMonitor(QMainWindow):
         self.timer.timeout.connect(self.update_stats)
         self.timer.start(2000)
 
+        # Start background turbostat poller
+        self.ts_worker = TurbostatWorker()
+        self.ts_worker.data_ready.connect(self.update_turbostat_data)
+        self.ts_thread = threading.Thread(target=self.ts_worker.run, daemon=True)
+        self.ts_thread.start()
+
+
+
         # Latest Turbostat data placeholders
         self.ts_freqs = {}
         self.ts_core_temps = {}
@@ -348,10 +352,16 @@ class HardwareMonitor(QMainWindow):
         self.ts_pkg_watt = "N/A"
         self.ts_pkg_temp = "N/A"
 
-        # Start background turbostat poller
-        self.ts_worker = TurbostatWorker()
-        self.ts_worker.data_ready.connect(self.update_turbostat_data)
-        self.ts_worker.start()
+
+
+        # Latest Turbostat data placeholders
+        self.ts_freqs = {}
+        self.ts_core_temps = {}
+        self.ts_cstates = {}
+        self.ts_pkg_watt = "N/A"
+        self.ts_pkg_temp = "N/A"
+
+
 
         self.update_stats()
         self.table_view.sortByColumn(0, Qt.AscendingOrder) # Default ABC
@@ -363,6 +373,8 @@ class HardwareMonitor(QMainWindow):
             else:
                 self.showNormal()
                 self.activateWindow()
+
+
 
     def update_turbostat_data(self, freqs, core_temps, cstates, pkg_watt, pkg_temp):
         self.ts_freqs = freqs
@@ -445,71 +457,12 @@ class HardwareMonitor(QMainWindow):
 
         core_times = psutil.cpu_times_percent(percpu=True)
 
-        # 1.1 Frequencies, Temps, C-States via turbostat
-        freqs = {}
-        core_temps = {}
-        cstates = {}
-        pkg_watt = "N/A"
-        pkg_temp = "N/A"
-
-        try:
-            out = subprocess.check_output("echo '1104' | sudo -S /usr/sbin/turbostat -q --num_iterations 1 2>&1", shell=True, text=True, timeout=5)
-            lines = out.strip().split('\n')
-            headers = []
-            # Find the actual header line
-            header_idx = -1
-            for i, line in enumerate(lines):
-                if 'Core' in line and 'CPU' in line and 'Avg_MHz' in line:
-                    header_idx = i
-                    break
-
-            if header_idx != -1:
-                # Strip sudo prompt if it prepended to the header
-                header_line = lines[header_idx].split('] Jules jelszava: ')[-1]
-                headers = header_line.split()
-                lines = lines[header_idx+1:]
-
-            for line in lines[1:]:
-                parts = line.split()
-                if not parts:
-                    continue
-
-                # Pair header and part, handle cases where lengths mismatch slightly if some columns are empty
-                row = dict(zip(headers[:len(parts)], parts))
-
-                if row.get('Core') == '-' and row.get('CPU') == '-':
-                    if 'PkgWatt' in row: pkg_watt = row['PkgWatt']
-                    if 'PkgTmp' in row: pkg_temp = f"{row['PkgTmp']}°C"
-                    continue
-
-                try:
-                    cpu_idx = int(row.get('CPU', -1))
-                    if cpu_idx >= 0:
-                        if 'Avg_MHz' in row: freqs[cpu_idx] = float(row['Avg_MHz'])
-
-                        # In turbostat, 'CoreTmp' only appears on the primary thread of a physical core.
-                        # So thread 4 won't have 'CoreTmp' column, or it might be shifted.
-                        # We fall back if it is missing by finding the physical core it belongs to later.
-                        # Actually turbostat usually prints it for the first thread of the core.
-                        # We'll just collect whatever is present.
-                        if 'CoreTmp' in row and row['CoreTmp'] != '-':
-                            core_temps[cpu_idx] = float(row['CoreTmp'])
-                        elif 'Core' in row and row['Core'] != '-':
-                            # We can also map physical core temps
-                            phys_core = int(row['Core'])
-                            if 'CoreTmp' in row:
-                                core_temps[phys_core] = float(row['CoreTmp'])
-
-                        states = {}
-                        for st in ['C1%', 'C1E%', 'C3%', 'C6%', 'POLL%']:
-                            if st in row:
-                                try: states[st.replace('%', '')] = float(row[st])
-                                except: pass
-                        cstates[cpu_idx] = states
-                except:
-                    pass
-        except Exception:
-            pass
+        # Use cached background Turbostat data
+        freqs = self.ts_freqs
+        core_temps = self.ts_core_temps
+        cstates = self.ts_cstates
+        pkg_watt = self.ts_pkg_watt
+        pkg_temp = self.ts_pkg_temp
 
         for i, c in enumerate(core_times):
             if i < len(self.cpu_bars):
@@ -519,15 +472,16 @@ class HardwareMonitor(QMainWindow):
                 color = "#94a3b8"
                 if i in cstates:
                     states = cstates[i]
-                    # Find highest percentage
+                    # states dict has 'C1', 'C1E', 'C3', 'C6', 'POLL', and 'Busy'
+                    # Actually turbostat dict above didn't parse Busy%! Let's parse 'Busy%' as 'C0'.
                     if states:
                         active_state = max(states, key=states.get)
-                        if "C0" in active_state or "POLL" in active_state:
-                            color = "#16a34a" # Green
+                        if active_state in ["C0", "Busy", "POLL"]:
+                            color = "#16a34a" # Green (Aktív)
                         elif active_state in ["C1", "C1E", "C3"]:
-                            color = "#eab308" # Yellow
+                            color = "#eab308" # Yellow (Készenlét/Pihen)
                         elif "C6" in active_state or "C7" in active_state:
-                            color = "#64748b" # Gray
+                            color = "#64748b" # Gray (Kikapcsolt/Alvó)
 
                 core_widget.set_color(color)
 
@@ -624,7 +578,6 @@ class HardwareMonitor(QMainWindow):
         # Update Table Model (this triggers the view to update without losing scroll position/sorting)
         self.table_model.update_data(new_data)
 
-
 # Server logikát beépítjük, hogy QSystemTrayIconnal is mukodjön.
 if __name__ == '__main__':
     app = QApplication(sys.argv)
@@ -637,8 +590,11 @@ if __name__ == '__main__':
     if socket.waitForConnected(500):
         # Már fut!
         socket.write(b"SHOW")
-        socket.waitForBytesWritten(500)
-        sys.exit(0)
+        if socket.waitForBytesWritten(500):
+            sys.exit(0)
+
+    # Ha döglött a socket, töröljük
+    QLocalServer.removeServer('Jules_HW_Monitor_Instance')
 
     server = QLocalServer()
     server.removeServer('Jules_HW_Monitor_Instance')
