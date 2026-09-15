@@ -1,3 +1,4 @@
+import threading
 import sys
 import psutil
 import subprocess
@@ -5,14 +6,14 @@ import os
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QTableView, QHeaderView,
                              QAbstractItemView, QSystemTrayIcon, QMenu, QAction)
-from PyQt5.QtCore import QTimer, Qt, QAbstractTableModel, QSortFilterProxyModel, QModelIndex
+from PyQt5.QtCore import QTimer, Qt, QAbstractTableModel, QSortFilterProxyModel, QModelIndex, pyqtSignal, QObject
 from PyQt5.QtGui import QColor, QFont, QPainter, QIcon
 from PyQt5.QtNetwork import QLocalSocket, QLocalServer
 
 class ResourceBar(QWidget):
     def __init__(self, label_text, parent=None):
         super().__init__(parent)
-        self.label_text = label_text
+        self.label_text = label_text # e.g. "2500MHz 33C"
         self.val1 = 0.0 # Zöld (User)
         self.val2 = 0.0 # Vörös (System/Kernel)
         self.setFixedHeight(15)
@@ -37,9 +38,30 @@ class ResourceBar(QWidget):
         painter.setPen(QColor("white"))
         font = QFont("Segoe UI", 8, QFont.Bold)
         painter.setFont(font)
+        # Inside the bar: just the freq/temp and the percentage
         text = f"{self.label_text} [{self.val1+self.val2:.1f}%]"
         painter.drawText(self.rect(), Qt.AlignVCenter | Qt.AlignLeft, "  " + text)
 
+class CPUCoreWidget(QWidget):
+    def __init__(self, core_idx, parent=None):
+        super().__init__(parent)
+        self.core_idx = core_idx
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
+
+        self.number_label = QLabel(f"{core_idx}")
+        self.number_label.setFixedWidth(20)
+        self.number_label.setAlignment(Qt.AlignCenter)
+        self.number_label.setStyleSheet("color: #94a3b8; font-weight: bold; font-size: 13px;")
+
+        self.bar = ResourceBar("")
+
+        layout.addWidget(self.number_label)
+        layout.addWidget(self.bar)
+
+    def set_color(self, color):
+        self.number_label.setStyleSheet(f"color: {color}; font-weight: bold; font-size: 13px;")
 
 class MultiBar(QWidget):
     def __init__(self, label_text, color_map, parent=None):
@@ -71,7 +93,6 @@ class MultiBar(QWidget):
         painter.setFont(font)
         text = self.text_override if self.text_override else self.label_text
         painter.drawText(self.rect(), Qt.AlignVCenter | Qt.AlignLeft, "  " + text)
-
 
 # --- Custom Table Model for Smooth Scrolling and Proper Sorting ---
 class ProcessTableModel(QAbstractTableModel):
@@ -122,27 +143,88 @@ class ProcessTableModel(QAbstractTableModel):
         self._data = new_data
         self.endResetModel()
 
+class TurbostatWorker(QObject):
+    data_ready = pyqtSignal(dict, dict, dict, str, str) # freqs, core_temps, cstates, pkg_watt, pkg_temp
+
+    def run(self):
+        while True:
+            freqs = {}
+            core_temps = {}
+            cstates = {}
+            pkg_watt = "N/A"
+            pkg_temp = "N/A"
+            try:
+                # Turbostat can take a few seconds
+                import subprocess
+                out = subprocess.check_output("sudo -n /usr/sbin/turbostat -q --num_iterations 1 2>&1", shell=True, text=True, timeout=10)
+                lines = out.strip().split('\n')
+                headers = []
+                header_idx = -1
+                for i, line in enumerate(lines):
+                    if 'Core' in line and 'CPU' in line and 'Avg_MHz' in line:
+                        header_idx = i
+                        break
+
+                if header_idx != -1:
+                    header_line = lines[header_idx].split('] Jules jelszava: ')[-1]
+                    headers = header_line.split()
+                    for line in lines[header_idx+1:]:
+                        parts = line.split()
+                        if not parts: continue
+                        row = dict(zip(headers[:len(parts)], parts))
+
+                        if row.get('Core') == '-' and row.get('CPU') == '-':
+                            if 'PkgWatt' in row: pkg_watt = row['PkgWatt']
+                            if 'PkgTmp' in row: pkg_temp = f"{row['PkgTmp']}°C"
+                            continue
+
+                        try:
+                            cpu_idx = int(row.get('CPU', -1))
+                            if cpu_idx >= 0:
+                                if 'Bzy_MHz' in row: freqs[cpu_idx] = float(row['Bzy_MHz'])
+
+                                if 'CoreTmp' in row and row['CoreTmp'] != '-':
+                                    core_temps[cpu_idx] = float(row['CoreTmp'])
+                                elif 'Core' in row and row['Core'] != '-':
+                                    phys_core = int(row['Core'])
+                                    if 'CoreTmp' in row:
+                                        core_temps[phys_core] = float(row['CoreTmp'])
+
+                                states = {}
+                                for st in ['Busy%', 'C1%', 'C1E%', 'C3%', 'C6%', 'POLL%']:
+                                    if st in row:
+                                        try: states[st.replace('%', '')] = float(row[st])
+                                        except: pass
+                                cstates[cpu_idx] = states
+                        except:
+                            pass
+            except Exception:
+                pass
+
+            self.data_ready.emit(freqs, core_temps, cstates, pkg_watt, pkg_temp)
+            import time
+            time.sleep(1) # Wait before polling again
 
 class HardwareMonitor(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Jules Hardver Monitor - v1.0.1")
+        self.setWindowTitle("Hardver Monitor (Htop + Nvtop)")
         self.resize(1000, 800)
         self.setStyleSheet("QMainWindow { background-color: #0f172a; color: white; }")
 
         # Ablak ikon (Pajzs)
-        self.icon_path = "/usr/share/icons/oxygen/base/128x128/apps/hwinfo.png"
+        self.icon_path = "/usr/share/icons/gnome/256x256/apps/utilities-system-monitor.png"
         if os.path.exists(self.icon_path):
             self.setWindowIcon(QIcon(self.icon_path))
         else:
-            self.setWindowIcon(QIcon.fromTheme("hwinfo"))
+            self.setWindowIcon(QIcon.fromTheme("utilities-system-monitor"))
 
         # Tray Icon beállítás
         self.tray_icon = QSystemTrayIcon(self)
         if os.path.exists(self.icon_path):
             self.tray_icon.setIcon(QIcon(self.icon_path))
         else:
-            self.tray_icon.setIcon(QIcon.fromTheme("hwinfo"))
+            self.tray_icon.setIcon(QIcon.fromTheme("utilities-system-monitor"))
 
         tray_menu = QMenu()
         show_action = QAction("Megjelenítés", self)
@@ -161,8 +243,12 @@ class HardwareMonitor(QMainWindow):
 
         # --- Felső statisztikák (Htop stílus) ---
         self.stats_header = QLabel("Uptime: N/A  |  Load average: N/A  |  Tasks: N/A")
-        self.stats_header.setStyleSheet("color: #cbd5e1; font-weight: bold; font-size: 13px; margin-bottom: 5px;")
+        self.stats_header.setStyleSheet("color: #cbd5e1; font-weight: bold; font-size: 13px;")
         self.layout.addWidget(self.stats_header)
+
+        self.sensor_header = QLabel("Hőmérséklet: N/A  |  Teljesítmény (Watt): N/A")
+        self.sensor_header.setStyleSheet("color: #f87171; font-weight: bold; font-size: 13px; margin-bottom: 5px;")
+        self.layout.addWidget(self.sensor_header)
 
         # --- CPU Szekció ---
         self.cpu_bars = []
@@ -175,23 +261,25 @@ class HardwareMonitor(QMainWindow):
         self.total_cpu_bar = ResourceBar("CPU Összesített")
         self.layout.addWidget(self.total_cpu_bar)
 
-        cpu_layout = QHBoxLayout()
-        col1 = QVBoxLayout()
-        col2 = QVBoxLayout()
+        from PyQt5.QtWidgets import QGridLayout
+        cpu_layout = QGridLayout()
+
+        # Calculate dynamic columns: max 5 rows, then expand columns
+        cols = max(2, (self.cpu_count + 4) // 5)
+
         for i in range(self.cpu_count):
-            bar = ResourceBar(f"{i+1}")
-            self.cpu_bars.append(bar)
-            if i % 2 == 0:
-                col1.addWidget(bar)
-            else:
-                col2.addWidget(bar)
-        cpu_layout.addLayout(col1)
-        cpu_layout.addLayout(col2)
+            core_widget = CPUCoreWidget(i)
+            self.cpu_bars.append(core_widget)
+            row = i // cols
+            col = i % cols
+            cpu_layout.addWidget(core_widget, row, col)
+
         self.layout.addLayout(cpu_layout)
 
         # --- Memória és Swap ---
         mem_layout = QVBoxLayout()
-        legend_lbl = QLabel("Jelmagyarázat: [Zöld=Használt] [Kék=Puffer] [Sárga=Cache] | CPU: [Zöld=User] [Vörös=Sys]")
+        legend_lbl = QLabel("Jelmagyarázat: Mem: [Zöld=Használt] [Kék=Puffer] [Sárga=Cache] | CPU Terhelés: [Zöld=User] [Vörös=Sys]\n"
+                            "CPU C-State: [Zöld=C0 (Aktív)] [Sárga=C1/C1E/C3 (Pihen)] [Szürke=C6/Alvó (Kikapcsolt)]")
         legend_lbl.setStyleSheet("color: #94a3b8; font-size: 11px;")
         mem_layout.addWidget(legend_lbl)
 
@@ -237,13 +325,47 @@ class HardwareMonitor(QMainWindow):
             QTableView { background-color: #1e293b; color: white; gridline-color: #334155; border: none; }
             QHeaderView::section { background-color: #0f172a; color: #94a3b8; font-weight: bold; border: 1px solid #334155; }
         """)
+
+        self.table_view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table_view.customContextMenuRequested.connect(self.show_process_menu)
+
         self.layout.addWidget(self.table_view)
 
         self.process_cache = {}
 
+        # Init psutil cpu timing
+        psutil.cpu_times_percent(interval=None, percpu=False)
+        psutil.cpu_times_percent(interval=None, percpu=True)
+
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_stats)
         self.timer.start(2000)
+
+        # Start background turbostat poller
+        self.ts_worker = TurbostatWorker()
+        self.ts_worker.data_ready.connect(self.update_turbostat_data)
+        self.ts_thread = threading.Thread(target=self.ts_worker.run, daemon=True)
+        self.ts_thread.start()
+
+
+
+        # Latest Turbostat data placeholders
+        self.ts_freqs = {}
+        self.ts_core_temps = {}
+        self.ts_cstates = {}
+        self.ts_pkg_watt = "N/A"
+        self.ts_pkg_temp = "N/A"
+
+
+
+        # Latest Turbostat data placeholders
+        self.ts_freqs = {}
+        self.ts_core_temps = {}
+        self.ts_cstates = {}
+        self.ts_pkg_watt = "N/A"
+        self.ts_pkg_temp = "N/A"
+
+
 
         self.update_stats()
         self.table_view.sortByColumn(0, Qt.AscendingOrder) # Default ABC
@@ -256,10 +378,54 @@ class HardwareMonitor(QMainWindow):
                 self.showNormal()
                 self.activateWindow()
 
+
+
+    def update_turbostat_data(self, freqs, core_temps, cstates, pkg_watt, pkg_temp):
+        self.ts_freqs = freqs
+        self.ts_core_temps = core_temps
+        self.ts_cstates = cstates
+        self.ts_pkg_watt = pkg_watt
+        self.ts_pkg_temp = pkg_temp
+
     def closeEvent(self, event):
         event.ignore()
         self.hide()
         self.tray_icon.showMessage("Hardver Monitor", "Az alkalmazás a tálcán fut tovább.", QSystemTrayIcon.Information, 2000)
+
+    def show_process_menu(self, pos):
+        index = self.table_view.indexAt(pos)
+        if not index.isValid():
+            return
+
+        row = index.row()
+        # Retrieve the PID from the proxy model
+        pid_index = self.proxy_model.index(row, 1)
+        name_index = self.proxy_model.index(row, 0)
+
+        pid = int(self.proxy_model.data(pid_index, Qt.DisplayRole))
+        name = self.proxy_model.data(name_index, Qt.DisplayRole)
+
+        menu = QMenu(self)
+        kill_action = QAction(f"Kill Process ({name} - PID: {pid})", self)
+
+        def kill_process():
+            try:
+                # Basic kill attempt
+                p = psutil.Process(pid)
+                p.kill()
+                self.tray_icon.showMessage("Hardver Monitor", f"Folyamat bezárva: {name}", QSystemTrayIcon.Information, 2000)
+            except psutil.AccessDenied:
+                # If access is denied, use pkexec for sudo kill
+                try:
+                    subprocess.Popen(f"pkexec kill -9 {pid}", shell=True)
+                except:
+                    pass
+            except Exception:
+                pass
+
+        kill_action.triggered.connect(kill_process)
+        menu.addAction(kill_action)
+        menu.exec_(self.table_view.viewport().mapToGlobal(pos))
 
     def get_uptime(self):
         try:
@@ -290,13 +456,72 @@ class HardwareMonitor(QMainWindow):
             pass
 
         # 1. CPU Frissítés
-        total_times = psutil.cpu_times_percent(percpu=False)
+        total_times = psutil.cpu_times_percent(interval=None, percpu=False)
         self.total_cpu_bar.update_values(total_times.user, total_times.system)
 
-        core_times = psutil.cpu_times_percent(percpu=True)
+        core_times = psutil.cpu_times_percent(interval=None, percpu=True)
+
+        # Use cached background Turbostat data
+        freqs = self.ts_freqs
+        core_temps = self.ts_core_temps
+        cstates = self.ts_cstates
+        pkg_watt = self.ts_pkg_watt
+        pkg_temp = self.ts_pkg_temp
+
         for i, c in enumerate(core_times):
             if i < len(self.cpu_bars):
-                self.cpu_bars[i].update_values(c.user, c.system)
+                core_widget = self.cpu_bars[i]
+
+                # We will use Turbostat's Busy% for accurate per-core load mapping if available
+                # fallback to psutil if it's not (e.g. initial tick)
+                busy = c.user + c.system
+                sys_perc = c.system
+
+                if i in cstates and 'Busy' in cstates[i]:
+                    busy = cstates[i]['Busy']
+                    # Use psutil's ratio to split turbostat's accurate total busy percentage into User(Green) and System(Red)
+                    psutil_total = c.user + c.system
+                    if psutil_total > 0:
+                        user_ratio = c.user / psutil_total
+                        sys_ratio = c.system / psutil_total
+                        core_widget.bar.update_values(busy * user_ratio, busy * sys_ratio)
+                    else:
+                        core_widget.bar.update_values(busy, 0.0)
+                else:
+                    core_widget.bar.update_values(c.user, c.system)
+
+                color = "#94a3b8"
+                if i in cstates:
+                    states = cstates[i]
+                    # states dict has 'C1', 'C1E', 'C3', 'C6', 'POLL', and 'Busy'
+                    # Actually turbostat dict above didn't parse Busy%! Let's parse 'Busy%' as 'C0'.
+                    if states:
+                        active_state = max(states, key=states.get)
+                        if active_state in ["C0", "Busy", "POLL"]:
+                            color = "#16a34a" # Green (Aktív)
+                        elif active_state in ["C1", "C1E", "C3"]:
+                            color = "#eab308" # Yellow (Készenlét/Pihen)
+                        elif "C6" in active_state or "C7" in active_state:
+                            color = "#64748b" # Gray (Kikapcsolt/Alvó)
+
+                core_widget.set_color(color)
+
+                freq_text = f"{int(freqs[i])}MHz" if i in freqs else ""
+
+                # Fallback to map logical threads to physical core temps if turbostat omitted it
+                temp_val = None
+                if i in core_temps:
+                    temp_val = core_temps[i]
+                else:
+                    phys_cores = self.cpu_count // 2 if self.cpu_count > 4 else self.cpu_count
+                    if phys_cores > 0 and (i % phys_cores) in core_temps:
+                        temp_val = core_temps[i % phys_cores]
+
+                temp_text = f" {int(temp_val)}°C" if temp_val is not None else ""
+
+                core_widget.bar.label_text = f"{freq_text}{temp_text}"
+
+        self.sensor_header.setText(f"Hőmérséklet (CPU): {pkg_temp}  |  Teljesítmény: {pkg_watt} W")
 
         # 1.5 Memória és SWAP
         mem = psutil.virtual_memory()
@@ -374,7 +599,6 @@ class HardwareMonitor(QMainWindow):
         # Update Table Model (this triggers the view to update without losing scroll position/sorting)
         self.table_model.update_data(new_data)
 
-
 # Server logikát beépítjük, hogy QSystemTrayIconnal is mukodjön.
 if __name__ == '__main__':
     app = QApplication(sys.argv)
@@ -387,8 +611,11 @@ if __name__ == '__main__':
     if socket.waitForConnected(500):
         # Már fut!
         socket.write(b"SHOW")
-        socket.waitForBytesWritten(500)
-        sys.exit(0)
+        if socket.waitForBytesWritten(500):
+            sys.exit(0)
+
+    # Ha döglött a socket, töröljük
+    QLocalServer.removeServer('Jules_HW_Monitor_Instance')
 
     server = QLocalServer()
     server.removeServer('Jules_HW_Monitor_Instance')
