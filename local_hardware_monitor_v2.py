@@ -13,7 +13,6 @@ class ResourceBar(QWidget):
     def __init__(self, label_text, parent=None):
         super().__init__(parent)
         self.label_text = label_text
-        self.label_color = "white"
         self.val1 = 0.0 # Zöld (User)
         self.val2 = 0.0 # Vörös (System/Kernel)
         self.setFixedHeight(15)
@@ -35,7 +34,7 @@ class ResourceBar(QWidget):
         w2 = int((self.val2 / 100.0) * width)
         painter.fillRect(0, 0, w1, height, QColor("#16a34a"))
         painter.fillRect(w1, 0, w2, height, QColor("#dc2626"))
-        painter.setPen(QColor(self.label_color))
+        painter.setPen(QColor("white"))
         font = QFont("Segoe UI", 8, QFont.Bold)
         painter.setFont(font)
         text = f"{self.label_text} [{self.val1+self.val2:.1f}%]"
@@ -162,12 +161,8 @@ class HardwareMonitor(QMainWindow):
 
         # --- Felső statisztikák (Htop stílus) ---
         self.stats_header = QLabel("Uptime: N/A  |  Load average: N/A  |  Tasks: N/A")
-        self.stats_header.setStyleSheet("color: #cbd5e1; font-weight: bold; font-size: 13px;")
+        self.stats_header.setStyleSheet("color: #cbd5e1; font-weight: bold; font-size: 13px; margin-bottom: 5px;")
         self.layout.addWidget(self.stats_header)
-
-        self.sensor_header = QLabel("Hőmérséklet: N/A  |  Teljesítmény (Watt): N/A")
-        self.sensor_header.setStyleSheet("color: #f87171; font-weight: bold; font-size: 13px; margin-bottom: 5px;")
-        self.layout.addWidget(self.sensor_header)
 
         # --- CPU Szekció ---
         self.cpu_bars = []
@@ -180,25 +175,23 @@ class HardwareMonitor(QMainWindow):
         self.total_cpu_bar = ResourceBar("CPU Összesített")
         self.layout.addWidget(self.total_cpu_bar)
 
-        from PyQt5.QtWidgets import QGridLayout
-        cpu_layout = QGridLayout()
-
-        # Calculate dynamic columns: max 5 rows, then expand columns
-        cols = max(2, (self.cpu_count + 4) // 5)
-
+        cpu_layout = QHBoxLayout()
+        col1 = QVBoxLayout()
+        col2 = QVBoxLayout()
         for i in range(self.cpu_count):
-            bar = ResourceBar(f"CPU {i}")
+            bar = ResourceBar(f"{i+1}")
             self.cpu_bars.append(bar)
-            row = i // cols
-            col = i % cols
-            cpu_layout.addWidget(bar, row, col)
-
+            if i % 2 == 0:
+                col1.addWidget(bar)
+            else:
+                col2.addWidget(bar)
+        cpu_layout.addLayout(col1)
+        cpu_layout.addLayout(col2)
         self.layout.addLayout(cpu_layout)
 
         # --- Memória és Swap ---
         mem_layout = QVBoxLayout()
-        legend_lbl = QLabel("Jelmagyarázat: Mem: [Zöld=Használt] [Kék=Puffer] [Sárga=Cache] | CPU Terhelés: [Zöld=User] [Vörös=Sys]\n"
-                            "CPU C-State: [Zöld=C0 (Aktív)] [Sárga=C1/C1E/C3 (Pihen)] [Szürke=C6/Alvó (Kikapcsolt)]")
+        legend_lbl = QLabel("Jelmagyarázat: [Zöld=Használt] [Kék=Puffer] [Sárga=Cache] | CPU: [Zöld=User] [Vörös=Sys]")
         legend_lbl.setStyleSheet("color: #94a3b8; font-size: 11px;")
         mem_layout.addWidget(legend_lbl)
 
@@ -301,104 +294,9 @@ class HardwareMonitor(QMainWindow):
         self.total_cpu_bar.update_values(total_times.user, total_times.system)
 
         core_times = psutil.cpu_times_percent(percpu=True)
-
-        # Get C-states and frequencies
-        cstates = {}
-        try:
-            for i in range(self.cpu_count):
-                base = f"/sys/devices/system/cpu/cpu{i}/cpuidle"
-                if not os.path.exists(base): continue
-                c_states_time = {}
-                for s in os.listdir(base):
-                    if s.startswith("state"):
-                        name = open(f"{base}/{s}/name").read().strip()
-                        t = int(open(f"{base}/{s}/time").read().strip())
-                        c_states_time[name] = t
-                cstates[i] = c_states_time
-        except Exception:
-            pass
-
-        freqs = {}
-        try:
-            f = psutil.cpu_freq(percpu=True)
-            for i, fr in enumerate(f):
-                freqs[i] = fr.current
-        except Exception:
-            pass
-
-        # Calculate C-state deltas (simplistic approach: just check active states based on delta next tick)
-        if not hasattr(self, 'last_cstates'):
-            self.last_cstates = cstates
-
         for i, c in enumerate(core_times):
             if i < len(self.cpu_bars):
-                # Update bar usage
                 self.cpu_bars[i].update_values(c.user, c.system)
-
-                # Determine C-state color
-                color = "#94a3b8" # Default Gray / Sleeping
-                active_state = "C6"
-
-                if i in cstates and i in self.last_cstates:
-                    deltas = {}
-                    for k in cstates[i]:
-                        deltas[k] = cstates[i][k] - self.last_cstates[i].get(k, 0)
-
-                    if deltas:
-                        # Find the state with the maximum increase
-                        active_state = max(deltas, key=deltas.get)
-                        if active_state == "C0" or "POLL" in active_state:
-                            color = "#16a34a" # Green
-                        elif active_state in ["C1", "C1E", "C3"]:
-                            color = "#eab308" # Yellow
-                        elif "C6" in active_state or "C7" in active_state:
-                            color = "#64748b" # Gray
-
-                # Update text
-                freq_text = f" {int(freqs[i])}MHz" if i in freqs else ""
-                self.cpu_bars[i].label_text = f"CPU {i}{freq_text}"
-                self.cpu_bars[i].label_color = color
-
-        self.last_cstates = cstates
-
-        # Sensor updates
-        temp_str = "N/A"
-        try:
-            temps = psutil.sensors_temperatures()
-            if 'coretemp' in temps:
-                pkg = next((t for t in temps['coretemp'] if 'Package' in t.label), None)
-                if pkg:
-                    temp_str = f"{pkg.current}°C"
-                else:
-                    temp_str = f"{temps['coretemp'][0].current}°C"
-        except:
-            pass
-
-        # Attempt to read CPU Power (Watts) if available via RAPL or fallback
-        power_str = "N/A"
-        if not hasattr(self, 'last_energy'):
-            self.last_energy = 0
-            self.last_energy_time = 0
-
-        try:
-            energy_files = ['/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj', '/sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/energy_uj']
-            for e_file in energy_files:
-                if os.path.exists(e_file):
-                    energy = int(open(e_file).read().strip())
-                    import time
-                    now = time.time()
-                    if self.last_energy > 0 and (now - self.last_energy_time) > 0:
-                        delta_uj = energy - self.last_energy
-                        delta_s = now - self.last_energy_time
-                        power_w = (delta_uj / 1e6) / delta_s
-                        power_str = f"{power_w:.1f} W"
-                    self.last_energy = energy
-                    self.last_energy_time = now
-                    break
-        except:
-            pass
-
-        self.sensor_header.setText(f"Hőmérséklet (CPU): {temp_str}  |  Teljesítmény: {power_str}")
 
         # 1.5 Memória és SWAP
         mem = psutil.virtual_memory()
