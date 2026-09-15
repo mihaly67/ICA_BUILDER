@@ -267,10 +267,6 @@ class HardwareMonitor(QMainWindow):
             QTableView { background-color: #1e293b; color: white; gridline-color: #334155; border: none; }
             QHeaderView::section { background-color: #0f172a; color: #94a3b8; font-weight: bold; border: 1px solid #334155; }
         """)
-
-        self.table_view.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.table_view.customContextMenuRequested.connect(self.show_process_menu)
-
         self.layout.addWidget(self.table_view)
 
         self.process_cache = {}
@@ -294,41 +290,6 @@ class HardwareMonitor(QMainWindow):
         event.ignore()
         self.hide()
         self.tray_icon.showMessage("Hardver Monitor", "Az alkalmazás a tálcán fut tovább.", QSystemTrayIcon.Information, 2000)
-
-    def show_process_menu(self, pos):
-        index = self.table_view.indexAt(pos)
-        if not index.isValid():
-            return
-
-        row = index.row()
-        # Retrieve the PID from the proxy model
-        pid_index = self.proxy_model.index(row, 1)
-        name_index = self.proxy_model.index(row, 0)
-
-        pid = int(self.proxy_model.data(pid_index, Qt.DisplayRole))
-        name = self.proxy_model.data(name_index, Qt.DisplayRole)
-
-        menu = QMenu(self)
-        kill_action = QAction(f"Kill Process ({name} - PID: {pid})", self)
-
-        def kill_process():
-            try:
-                # Basic kill attempt
-                p = psutil.Process(pid)
-                p.kill()
-                self.tray_icon.showMessage("Hardver Monitor", f"Folyamat bezárva: {name}", QSystemTrayIcon.Information, 2000)
-            except psutil.AccessDenied:
-                # If access is denied, use pkexec for sudo kill
-                try:
-                    subprocess.Popen(f"pkexec kill -9 {pid}", shell=True)
-                except:
-                    pass
-            except Exception:
-                pass
-
-        kill_action.triggered.connect(kill_process)
-        menu.addAction(kill_action)
-        menu.exec_(self.table_view.viewport().mapToGlobal(pos))
 
     def get_uptime(self):
         try:
