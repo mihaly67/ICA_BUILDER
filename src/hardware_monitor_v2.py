@@ -176,24 +176,30 @@ class TurbostatWorker(QObject):
                         if row.get('Core') == '-' and row.get('CPU') == '-':
                             if 'PkgWatt' in row: pkg_watt = row['PkgWatt']
                             if 'PkgTmp' in row: pkg_temp = f"{row['PkgTmp']}°C"
+                            if 'Busy%' in row:
+                                try: cstates['total_busy'] = float(row['Busy%'].replace(',', '.'))
+                                except: pass
+                            if 'Bzy_MHz' in row:
+                                try: freqs['total_bzy_mhz'] = float(row['Bzy_MHz'].replace(',', '.'))
+                                except: pass
                             continue
 
                         try:
                             cpu_idx = int(row.get('CPU', -1))
                             if cpu_idx >= 0:
-                                if 'Bzy_MHz' in row: freqs[cpu_idx] = float(row['Bzy_MHz'])
+                                if 'Bzy_MHz' in row: freqs[cpu_idx] = float(row['Bzy_MHz'].replace(',', '.'))
 
                                 if 'CoreTmp' in row and row['CoreTmp'] != '-':
-                                    core_temps[cpu_idx] = float(row['CoreTmp'])
+                                    core_temps[cpu_idx] = float(row['CoreTmp'].replace(',', '.'))
                                 elif 'Core' in row and row['Core'] != '-':
                                     phys_core = int(row['Core'])
                                     if 'CoreTmp' in row:
-                                        core_temps[phys_core] = float(row['CoreTmp'])
+                                        core_temps[phys_core] = float(row['CoreTmp'].replace(',', '.'))
 
                                 states = {}
                                 for st in ['Busy%', 'C1%', 'C1E%', 'C3%', 'C6%', 'POLL%']:
                                     if st in row:
-                                        try: states[st.replace('%', '')] = float(row[st])
+                                        try: states[st.replace('%', '')] = float(row[st].replace(',', '.'))
                                         except: pass
                                 cstates[cpu_idx] = states
                         except:
@@ -457,9 +463,6 @@ class HardwareMonitor(QMainWindow):
 
         # 1. CPU Frissítés
         total_times = psutil.cpu_times_percent(interval=None, percpu=False)
-        self.total_cpu_bar.update_values(total_times.user, total_times.system)
-
-        core_times = psutil.cpu_times_percent(interval=None, percpu=True)
 
         # Use cached background Turbostat data
         freqs = self.ts_freqs
@@ -467,6 +470,25 @@ class HardwareMonitor(QMainWindow):
         cstates = self.ts_cstates
         pkg_watt = self.ts_pkg_watt
         pkg_temp = self.ts_pkg_temp
+
+        if 'total_busy' in cstates:
+            busy = cstates['total_busy']
+            psutil_total = total_times.user + total_times.system
+            if psutil_total > 0:
+                user_ratio = total_times.user / psutil_total
+                sys_ratio = total_times.system / psutil_total
+                self.total_cpu_bar.update_values(busy * user_ratio, busy * sys_ratio)
+            else:
+                self.total_cpu_bar.update_values(busy, 0.0)
+        else:
+            self.total_cpu_bar.update_values(total_times.user, total_times.system)
+
+        total_freq_text = ""
+        if 'total_bzy_mhz' in freqs:
+            total_freq_text = f" {int(freqs['total_bzy_mhz'])}MHz"
+        self.total_cpu_bar.label_text = f"CPU Összesített{total_freq_text}"
+
+        core_times = psutil.cpu_times_percent(interval=None, percpu=True)
 
         for i, c in enumerate(core_times):
             if i < len(self.cpu_bars):
