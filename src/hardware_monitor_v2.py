@@ -333,6 +333,10 @@ class HardwareMonitor(QMainWindow):
 
         self.process_cache = {}
 
+        # Init psutil cpu timing
+        psutil.cpu_times_percent(interval=None, percpu=False)
+        psutil.cpu_times_percent(interval=None, percpu=True)
+
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_stats)
         self.timer.start(2000)
@@ -452,10 +456,10 @@ class HardwareMonitor(QMainWindow):
             pass
 
         # 1. CPU Frissítés
-        total_times = psutil.cpu_times_percent(percpu=False)
+        total_times = psutil.cpu_times_percent(interval=None, percpu=False)
         self.total_cpu_bar.update_values(total_times.user, total_times.system)
 
-        core_times = psutil.cpu_times_percent(percpu=True)
+        core_times = psutil.cpu_times_percent(interval=None, percpu=True)
 
         # Use cached background Turbostat data
         freqs = self.ts_freqs
@@ -467,7 +471,18 @@ class HardwareMonitor(QMainWindow):
         for i, c in enumerate(core_times):
             if i < len(self.cpu_bars):
                 core_widget = self.cpu_bars[i]
-                core_widget.bar.update_values(c.user, c.system)
+
+                # We will use Turbostat's Busy% for accurate per-core load mapping if available
+                # fallback to psutil if it's not (e.g. initial tick)
+                busy = c.user + c.system
+                sys_perc = c.system
+
+                if i in cstates and 'Busy' in cstates[i]:
+                    busy = cstates[i]['Busy']
+                    # We don't have separate User/System from turbostat easily, so we just fill User as Busy
+                    core_widget.bar.update_values(busy, 0.0)
+                else:
+                    core_widget.bar.update_values(c.user, c.system)
 
                 color = "#94a3b8"
                 if i in cstates:
