@@ -181,7 +181,7 @@ class TurbostatWorker(QObject):
                         try:
                             cpu_idx = int(row.get('CPU', -1))
                             if cpu_idx >= 0:
-                                if 'Avg_MHz' in row: freqs[cpu_idx] = float(row['Avg_MHz'])
+                                if 'Bzy_MHz' in row: freqs[cpu_idx] = float(row['Bzy_MHz'])
 
                                 if 'CoreTmp' in row and row['CoreTmp'] != '-':
                                     core_temps[cpu_idx] = float(row['CoreTmp'])
@@ -479,8 +479,14 @@ class HardwareMonitor(QMainWindow):
 
                 if i in cstates and 'Busy' in cstates[i]:
                     busy = cstates[i]['Busy']
-                    # We don't have separate User/System from turbostat easily, so we just fill User as Busy
-                    core_widget.bar.update_values(busy, 0.0)
+                    # Use psutil's ratio to split turbostat's accurate total busy percentage into User(Green) and System(Red)
+                    psutil_total = c.user + c.system
+                    if psutil_total > 0:
+                        user_ratio = c.user / psutil_total
+                        sys_ratio = c.system / psutil_total
+                        core_widget.bar.update_values(busy * user_ratio, busy * sys_ratio)
+                    else:
+                        core_widget.bar.update_values(busy, 0.0)
                 else:
                     core_widget.bar.update_values(c.user, c.system)
 
