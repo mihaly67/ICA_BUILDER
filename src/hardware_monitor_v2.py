@@ -126,23 +126,23 @@ class ProcessTableModel(QAbstractTableModel):
 class HardwareMonitor(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Jules Hardver Monitor - v1.0.0")
+        self.setWindowTitle("Jules Hardver Monitor - v1.0.1")
         self.resize(1000, 800)
         self.setStyleSheet("QMainWindow { background-color: #0f172a; color: white; }")
 
         # Ablak ikon (Pajzs)
-        self.icon_path = "/usr/share/icons/oxygen/base/128x128/apps/utilities-system-monitor.png"
+        self.icon_path = "/usr/share/icons/oxygen/base/128x128/apps/hwinfo.png"
         if os.path.exists(self.icon_path):
             self.setWindowIcon(QIcon(self.icon_path))
         else:
-            self.setWindowIcon(QIcon.fromTheme("utilities-system-monitor"))
+            self.setWindowIcon(QIcon.fromTheme("hwinfo"))
 
         # Tray Icon beállítás
         self.tray_icon = QSystemTrayIcon(self)
         if os.path.exists(self.icon_path):
             self.tray_icon.setIcon(QIcon(self.icon_path))
         else:
-            self.tray_icon.setIcon(QIcon.fromTheme("utilities-system-monitor"))
+            self.tray_icon.setIcon(QIcon.fromTheme("hwinfo"))
 
         tray_menu = QMenu()
         show_action = QAction("Megjelenítés", self)
