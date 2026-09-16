@@ -279,7 +279,7 @@ class HardwareMonitor(QMainWindow):
         # --- Memória és Swap ---
         mem_layout = QVBoxLayout()
         legend_lbl = QLabel("Jelmagyarázat: Mem: [Zöld=Használt] [Kék=Puffer] [Sárga=Cache] | CPU Terhelés: [Zöld=User] [Vörös=Sys]\n"
-                            "CPU C-State: [Zöld=C0 (Aktív)] [Sárga=C1/C1E/C3 (Pihen)] [Szürke=C6/Alvó (Kikapcsolt)]")
+                            "CPU C-State: [Téglavörös=C0 (Aktív)] [Okker=C1/C1E/C3 (Pihen)] [Kék=C6/Alvó (Kikapcsolt)]")
         legend_lbl.setStyleSheet("color: #94a3b8; font-size: 11px;")
         mem_layout.addWidget(legend_lbl)
 
@@ -506,19 +506,17 @@ class HardwareMonitor(QMainWindow):
                 else:
                     core_widget.bar.update_values(c.user, c.system)
 
-                color = "#94a3b8"
+                color = "#94a3b8" # Alap szürke
                 if i in cstates:
                     states = cstates[i]
-                    # states dict has 'C1', 'C1E', 'C3', 'C6', 'POLL', and 'Busy'
-                    # Actually turbostat dict above didn't parse Busy%! Let's parse 'Busy%' as 'C0'.
                     if states:
                         active_state = max(states, key=states.get)
                         if active_state in ["C0", "Busy", "POLL"]:
-                            color = "#16a34a" # Green (Aktív)
+                            color = "#cb4154" # Téglavörös (Aktív)
                         elif active_state in ["C1", "C1E", "C3"]:
-                            color = "#eab308" # Yellow (Készenlét/Pihen)
+                            color = "#daa520" # Okker (Pihen)
                         elif "C6" in active_state or "C7" in active_state:
-                            color = "#64748b" # Gray (Kikapcsolt/Alvó)
+                            color = "#3b82f6" # Kék (Kikapcsolt/Alvó)
 
                 core_widget.set_color(color)
 
