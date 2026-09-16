@@ -203,7 +203,7 @@ class TurbostatWorker(QObject):
 
             self.data_ready.emit(freqs, core_temps, cstates, pkg_watt, pkg_temp)
             import time
-            time.sleep(1) # Wait before polling again
+            time.sleep(0.5) # Wait before polling again
 
 class HardwareMonitor(QMainWindow):
     def __init__(self):
@@ -339,7 +339,7 @@ class HardwareMonitor(QMainWindow):
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_stats)
-        self.timer.start(2000)
+        self.timer.start(1000)
 
         # Start background turbostat poller
         self.ts_worker = TurbostatWorker()
@@ -426,6 +426,52 @@ class HardwareMonitor(QMainWindow):
         kill_action.triggered.connect(kill_process)
         menu.addAction(kill_action)
         menu.exec_(self.table_view.viewport().mapToGlobal(pos))
+
+    def detect_gpus(self):
+        try:
+            import subprocess
+            cmd = "nvidia-smi --query-gpu=index,name --format=csv,noheader"
+            output = subprocess.check_output(cmd, shell=True, text=True).strip()
+            if output:
+                for line in output.split('\n'):
+                    parts = line.split(',')
+                    if len(parts) >= 2:
+                        idx = int(parts[0].strip())
+                        name = parts[1].strip()
+                        self.gpu_names[idx] = name
+
+                        core_bar = ResourceBar(f"[{idx}] {name} (Mag)")
+                        vram_bar = ResourceBar(f"[{idx}] {name} (VRAM)")
+                        self.gpu_layout.addWidget(core_bar)
+                        self.gpu_layout.addWidget(vram_bar)
+
+                        self.gpu_bars[idx] = {'core': core_bar, 'vram': vram_bar, 'name': name}
+        except Exception as e:
+            fallback = ResourceBar("GPU (Nvidia-smi hiba)")
+            self.gpu_layout.addWidget(fallback)
+
+    def detect_gpus(self):
+        try:
+            import subprocess
+            cmd = "nvidia-smi --query-gpu=index,name --format=csv,noheader"
+            output = subprocess.check_output(cmd, shell=True, text=True).strip()
+            if output:
+                for line in output.split('\n'):
+                    parts = line.split(',')
+                    if len(parts) >= 2:
+                        idx = int(parts[0].strip())
+                        name = parts[1].strip()
+                        self.gpu_names[idx] = name
+
+                        core_bar = ResourceBar(f"[{idx}] {name} (Mag)")
+                        vram_bar = ResourceBar(f"[{idx}] {name} (VRAM)")
+                        self.gpu_layout.addWidget(core_bar)
+                        self.gpu_layout.addWidget(vram_bar)
+
+                        self.gpu_bars[idx] = {'core': core_bar, 'vram': vram_bar, 'name': name}
+        except Exception as e:
+            fallback = ResourceBar("GPU (Nvidia-smi hiba)")
+            self.gpu_layout.addWidget(fallback)
 
     def get_uptime(self):
         try:
