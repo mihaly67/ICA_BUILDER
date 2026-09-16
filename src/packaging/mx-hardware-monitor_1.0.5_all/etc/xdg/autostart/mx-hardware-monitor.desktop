@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Jules Hardver Monitor v1.0.5
+Comment=Htop + Nvtop UI
+Exec=/usr/bin/mx-hardware-monitor
+Icon=/usr/share/icons/oxygen/base/128x128/apps/utilities-system-monitor.png
+Terminal=false
+Type=Application
+Categories=System;MX-Setup;
