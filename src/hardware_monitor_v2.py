@@ -205,6 +205,36 @@ class TurbostatWorker(QObject):
             import time
             time.sleep(1) # Wait before polling again
 
+def get_heatmap_color(value):
+    """Kiszámolja az interpolált színt 0.0 (Kék) és 100.0 (Téglavörös) között."""
+    value = max(0.0, min(100.0, float(value)))
+    # Színállomások (R, G, B)
+    # 0%: Kék (0, 0, 255)
+    # 25%: Cián (0, 255, 255)
+    # 50%: Zöld (0, 255, 0)
+    # 75%: Narancs/Sárga (255, 165, 0)
+    # 100%: Téglavörös (203, 65, 84)
+    stops = [
+        (0.0, (0, 0, 255)),
+        (25.0, (0, 255, 255)),
+        (50.0, (0, 255, 0)),
+        (75.0, (255, 165, 0)),
+        (100.0, (203, 65, 84))
+    ]
+
+    # Keresés a megfelelő intervallumban
+    for i in range(len(stops) - 1):
+        x0, (r0, g0, b0) = stops[i]
+        x1, (r1, g1, b1) = stops[i+1]
+        if x0 <= value <= x1:
+            ratio = (value - x0) / (x1 - x0)
+            r = int(r0 + (r1 - r0) * ratio)
+            g = int(g0 + (g1 - g0) * ratio)
+            b = int(b0 + (b1 - b0) * ratio)
+            return f"#{r:02x}{g:02x}{b:02x}"
+
+    return "#cb4154"
+
 class HardwareMonitor(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -506,21 +536,9 @@ class HardwareMonitor(QMainWindow):
                 else:
                     core_widget.bar.update_values(c.user, c.system)
 
-                color = "#94a3b8"
-                if i in cstates:
-                    states = cstates[i]
-                    # states dict has 'C1', 'C1E', 'C3', 'C6', 'POLL', and 'Busy'
-                    # Actually turbostat dict above didn't parse Busy%! Let's parse 'Busy%' as 'C0'.
-                    if states:
-                        active_state = max(states, key=states.get)
-                        if active_state in ["C0", "Busy", "POLL"]:
-                            color = "#16a34a" # Green (Aktív)
-                        elif active_state in ["C1", "C1E", "C3"]:
-                            color = "#eab308" # Yellow (Készenlét/Pihen)
-                        elif "C6" in active_state or "C7" in active_state:
-                            color = "#64748b" # Gray (Kikapcsolt/Alvó)
-
-                core_widget.set_color(color)
+                # Heatmap kiszámítása a mag Busy (C0) értéke alapján
+                heatmap_color = get_heatmap_color(busy)
+                core_widget.set_color(heatmap_color)
 
                 freq_text = f"{int(freqs[i])}MHz" if i in freqs else ""
 
